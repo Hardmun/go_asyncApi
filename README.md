@@ -27,4 +27,5 @@
 3) compile excelFusion.py to exe file
    pyinstaller -F -w --icon=asyncApi.ico asyncApi.py
 
-                                                    ©DENTSU :)
+
+                                              ©DENTSU 2023
