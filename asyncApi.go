@@ -2,51 +2,92 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
 )
 
 var logFile *os.File
 
-type msgError struct {
-	Error struct {
-		Status int    `json:"status"`
-		Reason string `json:"reason"`
-	} `json:"error"`
-}
-
-func openLogFile(path string) error {
-	var err error
-	logFile, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+func openFile(path string) (*os.File, error) {
+	lFile, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return lFile, nil
 }
 
-func errMessage(err error) struct{} {
-	return struct{}{}
+//	func ErrorMsgToJSON(status int, err error) {
+//		msgStruct := struct {
+//			Error struct {
+//				Status int    `json:"status"`
+//				Reason string `json:"reason"`
+//			} `json:"error"`
+//		}{
+//			Error: struct {
+//				Status int    `json:"status"`
+//				Reason string `json:"reason"`
+//			}(struct {
+//				Status int
+//				Reason string
+//			}{Status: status, Reason: err.Error()}),
+//		}
+//
+// }
+func systemError(errMsg error) {
+	sysFile, errSys := openFile("sys.log")
+	if errSys != nil {
+		log.Fatal(errSys)
+	}
+
+	defer func(sysFile *os.File) {
+		errClose := sysFile.Close()
+		if errClose != nil {
+			log.Fatal(errClose)
+		}
+	}(sysFile)
+
+	errorLog := log.New(sysFile, "[error]", log.LstdFlags|log.Lshortfile)
+	errorLog.Println(errMsg.Error())
+}
+
+func loggErrorMessage(err error) {
+	errorLog := log.New(logFile, "[error]", log.LstdFlags|log.Lshortfile)
+	errorLog.Println(err.Error())
 }
 
 func callAsyncApi(uuid *string) {
-	println(*uuid)
+	jsonFile, err := os.Open(filepath.Join(*uuid, "da1ta.json"))
+	if err != nil {
+		loggErrorMessage(err)
+	}
+
+	println(*uuid, jsonFile)
 }
 
 func main() {
-	err := openLogFile("defo/error.log")
+	logFile, err := openFile("error.log")
 	if err != nil {
-		newMessage := msgError{}
-
-		os.Exit(0)
+		systemError(err)
 	}
-	fmt.Printf("error: %v, logfile^ %v", err, *logFile)
+
+	fmt.Println(*logFile)
+
+	//defer func(logFile *os.File) {
+	//	err := logFile.Close()
+	//	if err != nil {
+	//		systemError(err)
+	//	}
+	//}(logFile)
 
 	args := os.Args
+
 	switch len(args) {
 	case 2:
 		arg := args[1]
 
 		if arg == "-clearLogs" {
-			println("clearLogs")
+			//TODO: Clear log with parameter
 		} else {
 			callAsyncApi(&arg)
 		}
