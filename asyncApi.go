@@ -1,13 +1,28 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 )
 
 var logFile *os.File
+
+type jsonStruct struct {
+	BaseURL  string `json:"base_Url"`
+	Url      string `json:"url"`
+	Ssl      bool   `json:"ssl"`
+	Login    string `json:"login"`
+	Password string `json:"password"`
+	Headers  struct {
+		ContentType string `json:"Content-type"`
+	}
+	Method string      `json:"method"`
+	Data   interface{} `json:"data"`
+}
 
 func openFile(path string) (*os.File, error) {
 	lFile, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -56,29 +71,61 @@ func loggErrorMessage(err error) {
 	errorLog.Println(err.Error())
 }
 
-func callAsyncApi(uuid *string) {
-	jsonFile, err := os.Open(filepath.Join(*uuid, "da1ta.json"))
+func openJSON(path string) (jsonStruct, error) {
+	var (
+		jsonFile *os.File
+		err      error
+		byteJSON []byte
+	)
+
+	jsonFile, err = os.Open(path)
 	if err != nil {
-		loggErrorMessage(err)
+		return jsonStruct{}, err
 	}
 
-	println(*uuid, jsonFile)
+	byteJSON, err = io.ReadAll(jsonFile)
+	if err != nil {
+		return jsonStruct{}, err
+	}
+
+	err = jsonFile.Close()
+	if err != nil {
+		return jsonStruct{}, err
+	}
+
+	var data jsonStruct
+	err = json.Unmarshal(byteJSON, &data)
+	if err != nil {
+		return jsonStruct{}, err
+	}
+
+	return data, nil
+}
+
+func callAsyncApi(uuid *string) error {
+	data, err := openJSON(filepath.Join(*uuid, "data.json"))
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(data)
+
+	return nil
 }
 
 func main() {
-	logFile, err := openFile("error.log")
+	var err error
+	logFile, err = openFile("error.log")
 	if err != nil {
 		systemError(err)
 	}
-
-	fmt.Println(*logFile)
-
-	//defer func(logFile *os.File) {
-	//	err := logFile.Close()
-	//	if err != nil {
-	//		systemError(err)
-	//	}
-	//}(logFile)
+	//Closing the logFile
+	defer func(logFile *os.File) {
+		err := logFile.Close()
+		if err != nil {
+			systemError(err)
+		}
+	}(logFile)
 
 	args := os.Args
 
@@ -89,7 +136,11 @@ func main() {
 		if arg == "-clearLogs" {
 			//TODO: Clear log with parameter
 		} else {
-			callAsyncApi(&arg)
+			err = callAsyncApi(&arg)
+			if err != nil {
+				loggErrorMessage(err)
+				fmt.Println(err.Error())
+			}
 		}
 	case 3:
 		//TODO: Clear log with parameter - folder
