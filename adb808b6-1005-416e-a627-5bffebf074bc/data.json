@@ -1,16 +1,22 @@
 {
-"base_url": "demo.mediascout.ru",
-"url": "/webapi/Clients/GetClients",
-"ssl": "true",
-"login": "vitaly.nikulin@okkam.ru",
-"password": "vukyz9O79?",
-"headers": {
-"Content-type": "application/json"
-},
-"method": "post",
-"data": [
-{
-"Inn": "7804307179"
-}
-]
+  "base_url": "demo.mediascout.ru",
+  "url": "/webapi/Clients/GetClients",
+  "ssl": "true",
+  "login": "vitaly.nikulin@okkam.ru",
+  "password": "vukyz9O79?",
+  "headers": {
+    "Content-type": "application/json"
+  },
+  "method": "post",
+  "data": [
+    {
+      "Inn": "7804307179"
+    },
+    {
+      "Inn": "7804347179"
+    },
+    {
+      "Inn": "7802207179"
+    }
+  ]
 }

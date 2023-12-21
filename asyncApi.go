@@ -12,16 +12,17 @@ import (
 var logFile *os.File
 
 type jsonStruct struct {
-	BaseURL  string `json:"base_Url"`
-	Url      string `json:"url"`
-	Ssl      bool   `json:"ssl"`
-	Login    string `json:"login"`
-	Password string `json:"password"`
+	BaseURL  string      `json:"base_Url"`
+	Url      string      `json:"url"`
+	Ssl      interface{} `json:"ssl"`
+	Login    string      `json:"login"`
+	Password string      `json:"password"`
+	Method   string      `json:"method"`
+	ConnPool int
 	Headers  struct {
 		ContentType string `json:"Content-type"`
 	}
-	Method string      `json:"method"`
-	Data   interface{} `json:"data"`
+	Data interface{} `json:"data"`
 }
 
 func openFile(path string) (*os.File, error) {
@@ -108,7 +109,9 @@ func callAsyncApi(uuid *string) error {
 		return err
 	}
 
-	fmt.Println(data)
+	for i, k = range data.Data {
+		pri
+	}
 
 	return nil
 }
