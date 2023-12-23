@@ -18,7 +18,8 @@ type jsonStruct struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
 	Method   string `json:"method"`
-	ConnPool int
+	ConnPool int    `json:"connPool"`
+	Ord      string `json:"ord"`
 	Headers  struct {
 		ContentType string `json:"Content-type"`
 	}
@@ -124,12 +125,18 @@ func callAsyncApi(uuid *string) error {
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
 
-	for k, v := range requests {
-		fmt.Println(k, v)
+	dataToJSON, errToJSON := json.Marshal(&requests)
+	if errToJSON != nil {
+		return fmt.Errorf("Cannot create a JSON \n func: %v desc: %v",
+			"callAsyncApi", "dataToJSON, errToJSON := json.Marshal(&requests)")
 	}
 
-	//	_ = requests
-	//fmt.Println(requests)
+	//for k, v := range requests {
+	//	fmt.Println(k, v)
+	//}
+
+	_ = dataToJSON
+	//fmt.Println(string(dataToJSON))
 
 	return nil
 }
