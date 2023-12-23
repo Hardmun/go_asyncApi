@@ -10,13 +10,16 @@
   "method": "post",
   "data": [
     {
-      "Inn": "7804307179"
+      "Inn": "7804307179",
+      "Status": "Active"
     },
     {
-      "Inn": "7804347179"
+      "Inn": "7804347179",
+      "Status": "Active"
     },
     {
-      "Inn": "7802207179"
+      "Inn": "7802207179",
+      "Status": "Active"
     }
   ]
 }
