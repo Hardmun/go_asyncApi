@@ -72,7 +72,7 @@ func loggErrorMessage(err error) {
 	errorLog.Println(err.Error())
 }
 
-func openJSON(path string) (jsonStruct, error) {
+func openJSON(path string) (*jsonStruct, error) {
 	var (
 		jsonFile *os.File
 		err      error
@@ -81,37 +81,51 @@ func openJSON(path string) (jsonStruct, error) {
 
 	jsonFile, err = os.Open(path)
 	if err != nil {
-		return jsonStruct{}, err
+		return nil, extraErr(&err, "openJSON", "jsonFile, err = os.Open(path)")
 	}
 
 	byteJSON, err = io.ReadAll(jsonFile)
 	if err != nil {
-		return jsonStruct{}, err
+		return nil, extraErr(&err, "openJSON", "byteJSON, err = io.ReadAll(jsonFile)")
 	}
 
 	err = jsonFile.Close()
 	if err != nil {
-		return jsonStruct{}, err
+		return nil, extraErr(&err, "openJSON", "err = jsonFile.Close()")
+	}
+
+	if !json.Valid(byteJSON) {
+		return nil, fmt.Errorf("invalid JSON string: %v", string(byteJSON))
 	}
 
 	var data jsonStruct
 	err = json.Unmarshal(byteJSON, &data)
 	if err != nil {
-		return jsonStruct{}, err
+		return nil, extraErr(&err, "openJSON", "err = json.Unmarshal(byteJSON, &data)")
 	}
 
-	return data, nil
+	return &data, nil
+}
+
+func extraErr(err *error, fnc string, desc string) error {
+	unpErr := *err
+	return fmt.Errorf("%v\n (func: %v desc: %v)", unpErr.Error(), fnc, desc)
 }
 
 func callAsyncApi(uuid *string) error {
 	data, err := openJSON(filepath.Join(*uuid, "data.json"))
 	if err != nil {
-		return err
+		return extraErr(&err, "callAsyncApi", "data, err := openJSON(filepath.Join(*uuid, \"data.json\"))")
 	}
 
-	for i, k = range data.Data {
-		pri
+	requests, ok := data.Data.([]interface{})
+	if !ok {
+		return fmt.Errorf("Cannot read request from JSON \n func: %v desc: %v",
+			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
+
+	//	_ = requests
+	fmt.Println(requests)
 
 	return nil
 }
@@ -120,13 +134,13 @@ func main() {
 	var err error
 	logFile, err = openFile("error.log")
 	if err != nil {
-		systemError(err)
+		systemError(extraErr(&err, "main", "logFile, err = openFile(\"error.log\")"))
 	}
 	//Closing the logFile
 	defer func(logFile *os.File) {
-		err := logFile.Close()
+		err = logFile.Close()
 		if err != nil {
-			systemError(err)
+			systemError(extraErr(&err, "main", "err = logFile.Close()"))
 		}
 	}(logFile)
 
@@ -141,7 +155,7 @@ func main() {
 		} else {
 			err = callAsyncApi(&arg)
 			if err != nil {
-				loggErrorMessage(err)
+				loggErrorMessage(extraErr(&err, "main", "err = callAsyncApi(&arg)"))
 				fmt.Println(err.Error())
 			}
 		}
