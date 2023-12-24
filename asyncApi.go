@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 )
@@ -20,28 +22,44 @@ type jsonStruct struct {
 	Method   string `json:"method"`
 	ConnPool int    `json:"connPool"`
 	Ord      string `json:"ord"`
-	Headers  struct {
-		ContentType string `json:"Content-type"`
-	}
-	Data any `json:"data"`
+	//Headers  struct {
+	//	ContentType string `json:"Content-type"`
+	//}
+	Headers map[string]string `json:"headers"`
+	Data    any               `json:"data"`
 }
 
-//type errorDetails struct {
-//	Status int    `json:"status"`
-//	Reason string `json:"reason"`
-//	Url    string `json:"url"`
-//	Json   any    `json:"json"`
-//}
-//
-//
-//type errorByIndex struct {
-//	Error errorDetails `json:"error"`
-//	Index int          `json:"index"`
-//}
-//
-//type errorResult struct {
-//	Data []errorByIndex `json:"data"`
-//}
+type resultStruct struct {
+	Data []any `json:"data"`
+}
+
+type errorDetails struct {
+	Status int    `json:"status"`
+	Reason string `json:"reason"`
+	Url    string `json:"url"`
+	Json   any    `json:"json"`
+}
+
+type errorStruct struct {
+	Error errorDetails `json:"error"`
+	Index int          `json:"index"`
+}
+
+type anyResponce []map[string]any
+
+func errorToStruct(index, status int, reason, url string, req interface{}) errorStruct {
+	newError := errorStruct{
+		Error: errorDetails{
+			Status: status,
+			Reason: reason,
+			Url:    url,
+			Json:   req,
+		},
+		Index: index,
+	}
+
+	return newError
+}
 
 func openFile(path string) (*os.File, error) {
 	lFile, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -51,23 +69,6 @@ func openFile(path string) (*os.File, error) {
 	return lFile, nil
 }
 
-//	func ErrorMsgToJSON(status int, err error) {
-//		msgStruct := struct {
-//			Error struct {
-//				Status int    `json:"status"`
-//				Reason string `json:"reason"`
-//			} `json:"error"`
-//		}{
-//			Error: struct {
-//				Status int    `json:"status"`
-//				Reason string `json:"reason"`
-//			}(struct {
-//				Status int
-//				Reason string
-//			}{Status: status, Reason: err.Error()}),
-//		}
-//
-// }
 func systemError(errMsg error) {
 	sysFile, errSys := openFile("sys.log")
 	if errSys != nil {
@@ -131,7 +132,17 @@ func errWrap(err *error, fnc string, desc string) error {
 }
 
 func callAsyncApi(uuid *string) error {
-	data, err := openJSON(filepath.Join(*uuid, "data.json"))
+	var (
+		data          *jsonStruct
+		err           error
+		requestJSON   []byte
+		responseJSON  []byte
+		reqAPI        *http.Request
+		resp          *http.Response
+		defaultStatus = 0
+	)
+
+	data, err = openJSON(filepath.Join(*uuid, "data.json"))
 	if err != nil {
 		return errWrap(&err, "callAsyncApi", "data, err := openJSON(filepath.Join(*uuid, \"data.json\"))")
 	}
@@ -142,18 +153,75 @@ func callAsyncApi(uuid *string) error {
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
 
-	dataToJSON, errToJSON := json.Marshal(&requests)
-	if errToJSON != nil {
-		return fmt.Errorf("Cannot create a JSON \n func: %v desc: %v",
-			"callAsyncApi", "dataToJSON, errToJSON := json.Marshal(&requests)")
+	resultMap := make([]any, len(requests))
+	prefHTTP := "https://"
+	if data.Ssl == false || data.Ssl == "false" {
+		prefHTTP = "http://"
+	}
+	url := prefHTTP + data.BaseURL + data.Url
+	login := data.Login
+	password := data.Password
+
+	var reqHEADERS = make(http.Header)
+	for k, v := range data.Headers {
+		reqHEADERS.Set(k, v)
 	}
 
-	//for k, v := range requests {
-	//	fmt.Println(k, v)
-	//}
+	for k, v := range requests {
 
-	_ = dataToJSON
-	//fmt.Println(string(dataToJSON))
+		requestJSON, err = json.Marshal(&v)
+		if err != nil {
+			resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), url, v)
+			continue
+		}
+
+		reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(requestJSON))
+		if err != nil {
+			resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), url, v)
+			continue
+		}
+
+		reqAPI.Header = reqHEADERS
+		reqAPI.SetBasicAuth(login, password)
+
+		client := http.Client{}
+		resp, err = client.Do(reqAPI)
+		if err != nil {
+			if resp != nil {
+				defaultStatus = resp.StatusCode
+			}
+			resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), url, v)
+			continue
+		}
+		defer resp.Body.Close()
+
+		responseJSON, err = io.ReadAll(resp.Body)
+		if err != nil {
+			resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), url, v)
+			continue
+		}
+
+		var responseStruct anyResponce
+		err = json.Unmarshal(responseJSON, &responseStruct)
+		if err != nil {
+			resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), url, v)
+			continue
+		}
+
+		//responseStruct = append(responseStruct, map[string]any{"index": k})
+		resultMap[k] = responseStruct
+		//fmt.Println(responseStruct)
+	}
+
+	resStruct := resultStruct{Data: resultMap}
+	responseJSON, err = json.Marshal(&resStruct)
+
+	var prettyJSON bytes.Buffer
+	err = json.Indent(&prettyJSON, responseJSON, "", "\t")
+
+	os.WriteFile(filepath.Join(*uuid, "result.json"), prettyJSON.Bytes(), os.ModePerm)
+
+	fmt.Println(resultMap)
 
 	return nil
 }
