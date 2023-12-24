@@ -33,6 +33,7 @@ type jsonStruct struct {
 //	Json   any    `json:"json"`
 //}
 //
+//
 //type errorByIndex struct {
 //	Error errorDetails `json:"error"`
 //	Index int          `json:"index"`
