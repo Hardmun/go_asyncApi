@@ -26,6 +26,22 @@ type jsonStruct struct {
 	Data any `json:"data"`
 }
 
+type errorDetails struct {
+	Status int    `json:"status"`
+	Reason string `json:"reason"`
+	Url    string `json:"url"`
+	Json   any    `json:"json"`
+}
+
+type errorByIndex struct {
+	Error errorDetails `json:"error"`
+	Index int          `json:"index"`
+}
+
+type errorResult struct {
+	Data []errorByIndex `json:"data"`
+}
+
 func openFile(path string) (*os.File, error) {
 	lFile, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
