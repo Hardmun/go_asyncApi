@@ -9,9 +9,22 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
 
-var logFile *os.File
+var (
+	logFile *os.File
+	wg      sync.WaitGroup
+	mtx     sync.Mutex
+)
+
+var glbParams struct {
+	url        string
+	login      string
+	password   string
+	reqHEADERS http.Header
+}
 
 type jsonStruct struct {
 	BaseURL  string `json:"base_Url"`
@@ -131,16 +144,80 @@ func errWrap(err *error, fnc string, desc string) error {
 	return fmt.Errorf("%v\n (func: %v desc: %v)", unpErr.Error(), fnc, desc)
 }
 
+func post(resultMap []any, k int, v any) {
+	var (
+		requestJSON  []byte
+		reqAPI       *http.Request
+		resp         *http.Response
+		responseJSON []byte
+		err          error
+		//defaultStatus = 0
+	)
+
+	defer wg.Done()
+
+	requestJSON, err = json.Marshal(&v)
+	if err != nil {
+		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+		return
+	}
+
+	reqAPI, err = http.NewRequest("POST", glbParams.url, bytes.NewBuffer(requestJSON))
+	if err != nil {
+		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+		return
+	}
+
+	reqAPI.Header = glbParams.reqHEADERS
+	mtx.Lock()
+	reqAPI.SetBasicAuth(glbParams.login, glbParams.password)
+
+	client := http.Client{}
+	resp, err = client.Do(reqAPI)
+	mtx.Unlock()
+	//if err != nil {
+	//	//if resp != nil {
+	//	//	defaultStatus = resp.StatusCode
+	//	//}
+	//	//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+	//	return
+	//}
+	//defer resp.Body.Close()
+
+	//responseJSON, err = io.ReadAll(resp.Body)
+	//if err != nil {
+	//	//resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
+	//	return
+	//}
+	//
+	//var responseStruct anyResponce
+	//err = json.Unmarshal(responseJSON, &responseStruct)
+	//if err != nil {
+	//	//resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
+	//	return
+	//}
+
+	//resultMap[k] = responseStruct
+
+	_ = requestJSON
+	_ = reqAPI
+	_ = resp
+	_ = responseJSON
+	_ = err
+	//_ = client
+	//_ = resp1
+	//_ = err1
+}
+
 func callAsyncApi(uuid *string) error {
 	var (
-		data          *jsonStruct
-		err           error
-		requestJSON   []byte
-		responseJSON  []byte
-		reqAPI        *http.Request
-		resp          *http.Response
-		defaultStatus = 0
+		data         *jsonStruct
+		err          error
+		responseJSON []byte
 	)
+
+	tBegin := time.Now()
+	fmt.Printf("start: %v\n", tBegin)
 
 	data, err = openJSON(filepath.Join(*uuid, "data.json"))
 	if err != nil {
@@ -153,65 +230,31 @@ func callAsyncApi(uuid *string) error {
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
 
-	resultMap := make([]any, len(requests))
+	//resultLength := len(requests)
+	resultLength := 50
+	resultMap := make([]any, resultLength)
 	prefHTTP := "https://"
 	if data.Ssl == false || data.Ssl == "false" {
 		prefHTTP = "http://"
 	}
-	url := prefHTTP + data.BaseURL + data.Url
-	login := data.Login
-	password := data.Password
+	glbParams.url = prefHTTP + data.BaseURL + data.Url
+	glbParams.login = data.Login
+	glbParams.password = data.Password
 
-	var reqHEADERS = make(http.Header)
+	var reqHEADERS = make(http.Header, len(data.Headers))
 	for k, v := range data.Headers {
 		reqHEADERS.Set(k, v)
 	}
+	glbParams.reqHEADERS = reqHEADERS
 
-	for k, v := range requests {
-
-		requestJSON, err = json.Marshal(&v)
-		if err != nil {
-			resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), url, v)
-			continue
-		}
-
-		reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(requestJSON))
-		if err != nil {
-			resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), url, v)
-			continue
-		}
-
-		reqAPI.Header = reqHEADERS
-		reqAPI.SetBasicAuth(login, password)
-
-		client := http.Client{}
-		resp, err = client.Do(reqAPI)
-		if err != nil {
-			if resp != nil {
-				defaultStatus = resp.StatusCode
-			}
-			resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), url, v)
-			continue
-		}
-		defer resp.Body.Close()
-
-		responseJSON, err = io.ReadAll(resp.Body)
-		if err != nil {
-			resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), url, v)
-			continue
-		}
-
-		var responseStruct anyResponce
-		err = json.Unmarshal(responseJSON, &responseStruct)
-		if err != nil {
-			resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), url, v)
-			continue
-		}
-
-		//responseStruct = append(responseStruct, map[string]any{"index": k})
-		resultMap[k] = responseStruct
-		//fmt.Println(responseStruct)
+	v := requests[0]
+	wg.Add(resultLength)
+	//for k, v := range requests {
+	for k := 0; k < resultLength; k++ {
+		go post(resultMap, k, v)
 	}
+
+	wg.Wait()
 
 	resStruct := resultStruct{Data: resultMap}
 	responseJSON, err = json.Marshal(&resStruct)
@@ -221,7 +264,8 @@ func callAsyncApi(uuid *string) error {
 
 	os.WriteFile(filepath.Join(*uuid, "result.json"), prettyJSON.Bytes(), os.ModePerm)
 
-	fmt.Println(resultMap)
+	tEnd := time.Now()
+	fmt.Printf("End: %v\nDuration: %v", tEnd, tEnd.Sub(tBegin))
 
 	return nil
 }
