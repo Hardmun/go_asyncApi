@@ -144,60 +144,131 @@ func errWrap(err *error, fnc string, desc string) error {
 	return fmt.Errorf("%v\n (func: %v desc: %v)", unpErr.Error(), fnc, desc)
 }
 
-func post(resultMap []any, k int, v any) {
+//backup
+//func post(resultMap []any, k int, v any) {
+//	var (
+//		requestJSON  []byte
+//		reqAPI       *http.Request
+//		resp         *http.Response
+//		responseJSON []byte
+//		err          error
+//		//defaultStatus = 0
+//	)
+//
+//	defer wg.Done()
+//
+//	requestJSON, err = json.Marshal(&v)
+//	if err != nil {
+//		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+//		return
+//	}
+//
+//	reqAPI, err = http.NewRequest("POST", glbParams.url, bytes.NewBuffer(requestJSON))
+//	if err != nil {
+//		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+//		return
+//	}
+//
+//	reqAPI.Header = glbParams.reqHEADERS
+//	//mtx.Lock()
+//	reqAPI.SetBasicAuth(glbParams.login, glbParams.password)
+//
+//	//client := http.Client{}
+//	//resp, err = client.Do(reqAPI)
+//	//mtx.Unlock()
+//	//if err != nil {
+//	//	//if resp != nil {
+//	//	//	defaultStatus = resp.StatusCode
+//	//	//}
+//	//	//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+//	//	return
+//	//}
+//	//defer resp.Body.Close()
+//
+//	//responseJSON, err = io.ReadAll(resp.Body)
+//	//if err != nil {
+//	//	//resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
+//	//	return
+//	//}
+//	//
+//	//var responseStruct anyResponce
+//	//err = json.Unmarshal(responseJSON, &responseStruct)
+//	//if err != nil {
+//	//	//resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
+//	//	return
+//	//}
+//
+//	//resultMap[k] = responseStruct
+//
+//	_ = requestJSON
+//	_ = reqAPI
+//	_ = resp
+//	_ = responseJSON
+//	_ = err
+//	//_ = client
+//	//_ = resp1
+//	//_ = err1
+//}
+
+func post(resultMap []any, k int, v any, reqAPI *http.Request) {
 	var (
-		requestJSON  []byte
-		reqAPI       *http.Request
-		resp         *http.Response
-		responseJSON []byte
-		err          error
-		//defaultStatus = 0
+		requestJSON []byte
+		//reqAPI       *http.Request
+		resp          *http.Response
+		responseJSON  []byte
+		err           error
+		defaultStatus = 0
 	)
 
 	defer wg.Done()
 
 	requestJSON, err = json.Marshal(&v)
 	if err != nil {
-		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+		resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
 		return
 	}
 
-	reqAPI, err = http.NewRequest("POST", glbParams.url, bytes.NewBuffer(requestJSON))
-	if err != nil {
-		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
-		return
-	}
-
-	reqAPI.Header = glbParams.reqHEADERS
-	mtx.Lock()
-	reqAPI.SetBasicAuth(glbParams.login, glbParams.password)
-
-	client := http.Client{}
-	resp, err = client.Do(reqAPI)
-	mtx.Unlock()
+	reqAPI.Body = io.NopCloser(bytes.NewBuffer(requestJSON))
+	//reqAPI, err = http.NewRequest("POST", glbParams.url, bytes.NewBuffer(requestJSON))
 	//if err != nil {
-	//	//if resp != nil {
-	//	//	defaultStatus = resp.StatusCode
-	//	//}
 	//	//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
 	//	return
 	//}
-	//defer resp.Body.Close()
-
-	//responseJSON, err = io.ReadAll(resp.Body)
-	//if err != nil {
-	//	//resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
-	//	return
-	//}
 	//
-	//var responseStruct anyResponce
-	//err = json.Unmarshal(responseJSON, &responseStruct)
-	//if err != nil {
-	//	//resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
-	//	return
-	//}
+	//reqAPI.Header = glbParams.reqHEADERS
+	////mtx.Lock()
+	//reqAPI.SetBasicAuth(glbParams.login, glbParams.password)
 
-	//resultMap[k] = responseStruct
+	client := http.Client{}
+	resp, err = client.Do(reqAPI)
+	if err != nil {
+		if resp != nil {
+			defaultStatus = resp.StatusCode
+		}
+		resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+		return
+	}
+	defer resp.Body.Close()
+
+	responseJSON, err = io.ReadAll(resp.Body)
+	if err != nil {
+		resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), glbParams.url, v)
+		return
+	}
+
+	var responseStruct anyResponce
+	err = json.Unmarshal(responseJSON, &responseStruct)
+	if err != nil {
+		errDesc := err.Error()
+		if responseJSON != nil {
+			errDesc = errWrap(&err, "asyncApi", "err = json.Unmarshal(responseJSON, &responseStruct):"+
+				string(responseJSON)).Error()
+		}
+		resultMap[k] = errorToStruct(k, resp.StatusCode, errDesc, glbParams.url, v)
+		return
+	}
+
+	resultMap[k] = responseStruct
 
 	_ = requestJSON
 	_ = reqAPI
@@ -214,6 +285,7 @@ func callAsyncApi(uuid *string) error {
 		data         *jsonStruct
 		err          error
 		responseJSON []byte
+		reqAPI       *http.Request
 	)
 
 	tBegin := time.Now()
@@ -231,7 +303,7 @@ func callAsyncApi(uuid *string) error {
 	}
 
 	//resultLength := len(requests)
-	resultLength := 50
+	resultLength := 100
 	resultMap := make([]any, resultLength)
 	prefHTTP := "https://"
 	if data.Ssl == false || data.Ssl == "false" {
@@ -247,11 +319,21 @@ func callAsyncApi(uuid *string) error {
 	}
 	glbParams.reqHEADERS = reqHEADERS
 
+	//TODO: testing
+	reqAPI, err = http.NewRequest("POST", glbParams.url, bytes.NewBuffer([]byte{}))
+	if err != nil {
+		//resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), glbParams.url, v)
+		return err
+	}
+
+	reqAPI.Header = glbParams.reqHEADERS
+	reqAPI.SetBasicAuth(glbParams.login, glbParams.password)
+
 	v := requests[0]
 	wg.Add(resultLength)
 	//for k, v := range requests {
 	for k := 0; k < resultLength; k++ {
-		go post(resultMap, k, v)
+		go post(resultMap, k, v, reqAPI)
 	}
 
 	wg.Wait()
