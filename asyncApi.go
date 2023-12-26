@@ -57,7 +57,8 @@ type errorStruct struct {
 	Index int          `json:"index"`
 }
 
-type anyResponse []map[string]any
+type multResponse []map[string]any
+type singleResponse map[string]any
 
 func errorToStruct(index, status int, reason, url string, req interface{}) errorStruct {
 	newError := errorStruct{
@@ -201,8 +202,8 @@ func post(resultMap []any, k int, v any, params connectionParams) {
 		return
 	}
 
-	var responseStruct anyResponse
-	err = json.Unmarshal(responseJSON, &responseStruct)
+	var rawMessage json.RawMessage
+	err = json.Unmarshal(responseJSON, &rawMessage)
 	if err != nil {
 		errDesc := err.Error()
 		if responseJSON != nil {
@@ -213,16 +214,11 @@ func post(resultMap []any, k int, v any, params connectionParams) {
 		return
 	}
 
-	resultMap[k] = responseStruct
+	//if _, ok := rawMessage[0]; !ok {
+	//
+	//}
 
-	_ = requestJSON
-	_ = reqAPI
-	_ = resp
-	_ = responseJSON
-	_ = err
-	//_ = client
-	//_ = resp1
-	//_ = err1
+	resultMap[k] = rawMessage[0] //responseStruct
 }
 
 func callAsyncApi(uuid *string) error {
