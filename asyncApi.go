@@ -43,10 +43,11 @@ type jsonStruct struct {
 }
 
 type errorDetails struct {
-	Status int    `json:"status"`
-	Reason string `json:"reason"`
-	Url    string `json:"url"`
-	Json   any    `json:"json"`
+	Status       int    `json:"status"`
+	StatusString string `json:"statusString"`
+	Reason       string `json:"reason"`
+	Url          string `json:"url"`
+	Json         any    `json:"json"`
 }
 
 type errorStruct struct {
@@ -62,18 +63,24 @@ type resultStruct struct {
 	Data []any `json:"data"`
 }
 
-func errorToStruct(index, status int, reason, url string, req interface{}) errorStruct {
+func getErrorStructure(index, status int, statusString, errDescription, url string, req interface{}) errorStruct {
 	newError := errorStruct{
 		Error: errorDetails{
-			Status: status,
-			Reason: reason,
-			Url:    url,
-			Json:   req,
+			Status:       status,
+			StatusString: statusString,
+			Reason:       errDescription,
+			Url:          url,
+			Json:         req,
 		},
 		Index: index,
 	}
 
 	return newError
+}
+
+func readMScoutError(responseStruct anyResponse) errorStruct {
+	d := responseStruct
+	_ = d
 }
 
 func openFile(path string) (*os.File, error) {
@@ -158,6 +165,7 @@ func httpREQUEST() {
 				err                 error
 				responseJSON        []byte
 				defaultStatus       = 0
+				defaultStrStatus    = ""
 				responseStructSlice anyResponseSlice
 				responseStruct      anyResponse
 			)
@@ -169,8 +177,9 @@ func httpREQUEST() {
 			if err != nil {
 				if resp != nil {
 					defaultStatus = resp.StatusCode
+					defaultStrStatus = resp.Status
 				}
-				dataFlow.result[dataFlow.index] = errorToStruct(dataFlow.index, defaultStatus,
+				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, defaultStatus, defaultStrStatus,
 					err.Error(), dataFlow.url, dataFlow.json)
 				return
 			}
@@ -184,7 +193,7 @@ func httpREQUEST() {
 
 			responseJSON, err = io.ReadAll(resp.Body)
 			if err != nil {
-				dataFlow.result[dataFlow.index] = errorToStruct(dataFlow.index, defaultStatus,
+				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, defaultStatus, defaultStrStatus,
 					err.Error(), dataFlow.url, dataFlow.json)
 				return
 			}
@@ -192,11 +201,17 @@ func httpREQUEST() {
 			if errUnmSlice := json.Unmarshal(responseJSON, &responseStructSlice); errUnmSlice != nil {
 				errUnm := json.Unmarshal(responseJSON, &responseStruct)
 				if errUnm != nil {
-					dataFlow.result[dataFlow.index] = errorToStruct(dataFlow.index, defaultStatus,
+					dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
 						errUnm.Error(), dataFlow.url, dataFlow.json)
 					return
 				}
-				dataFlow.result[dataFlow.index] = responseStruct
+
+				//define the error
+				if _, ok := responseStruct["Error"]; ok {
+					dataFlow.result[dataFlow.index] = readMScoutError(responseStruct)
+				} else {
+					dataFlow.result[dataFlow.index] = responseStruct
+				}
 				return
 			}
 
@@ -232,8 +247,8 @@ func callAsyncApi(uuid *string) error {
 	}
 
 	//resultLength := len(requests)
-	resultLength := 300 //TEST
-	connPool := 200     //default
+	resultLength := 500 //TEST
+	connPool := 300     //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
@@ -267,13 +282,13 @@ labelMain:
 
 			reqJSON, err = json.Marshal(&v)
 			if err != nil {
-				result[k] = errorToStruct(k, 0, err.Error(), url, v)
+				result[k] = getErrorStructure(k, 0, "", err, url, v)
 				continue
 			}
 
 			reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
 			if err != nil {
-				result[k] = errorToStruct(k, 0, err.Error(), url, v)
+				result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
 				continue
 			}
 			for key, value := range headers {
