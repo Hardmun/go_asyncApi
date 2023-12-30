@@ -218,8 +218,8 @@ func httpREQUEST() {
 					dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
 						errMsg, dataFlow.url, dataFlow.json)
 				} else {
+					responseStruct["index"] = dataFlow.index
 					dataFlow.result[dataFlow.index] = responseStruct
-					//responseStruct = append(responseStruct, "index")
 				}
 				return
 			}
