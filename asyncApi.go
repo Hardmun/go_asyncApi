@@ -59,6 +59,17 @@ type anyResponseSlice []map[string]any
 
 type anyResponse map[string]any
 
+func (ms *anyResponse) isMScoutError() bool {
+	if _, ok := (*ms)["ErrorType"]; !ok {
+		return false
+	}
+	if _, ok := (*ms)["ErrorItems"]; !ok {
+		return false
+	}
+
+	return true
+}
+
 type resultStruct struct {
 	Data []any `json:"data"`
 }
@@ -76,11 +87,6 @@ func getErrorStructure(index, status int, statusString, errDescription, url stri
 	}
 
 	return newError
-}
-
-func readMScoutError(responseStruct anyResponse) errorStruct {
-	d := responseStruct
-	_ = d
 }
 
 func openFile(path string) (*os.File, error) {
@@ -160,7 +166,7 @@ func httpREQUEST() {
 
 		go func(dataFlow *requestStruct) {
 			var (
-				client              http.Client
+				client              *http.Client
 				resp                *http.Response
 				err                 error
 				responseJSON        []byte
@@ -172,7 +178,7 @@ func httpREQUEST() {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			client = http.Client{}
+			client = &http.Client{}
 			resp, err = client.Do(dataFlow.httREQUEST)
 			if err != nil {
 				if resp != nil {
@@ -206,11 +212,14 @@ func httpREQUEST() {
 					return
 				}
 
-				//define the error
-				if _, ok := responseStruct["Error"]; ok {
-					dataFlow.result[dataFlow.index] = readMScoutError(responseStruct)
+				if responseStruct.isMScoutError() {
+					errMsg := responseStruct["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
+						"ErrorMessage"].(string)
+					dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
+						errMsg, dataFlow.url, dataFlow.json)
 				} else {
 					dataFlow.result[dataFlow.index] = responseStruct
+					//responseStruct = append(responseStruct, "index")
 				}
 				return
 			}
@@ -282,7 +291,7 @@ labelMain:
 
 			reqJSON, err = json.Marshal(&v)
 			if err != nil {
-				result[k] = getErrorStructure(k, 0, "", err, url, v)
+				result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
 				continue
 			}
 
