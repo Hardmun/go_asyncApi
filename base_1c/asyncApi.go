@@ -14,20 +14,19 @@ import (
 )
 
 var (
-	logFile     *os.File
-	wg          sync.WaitGroup
-	requestChan chan *requestStruct
-	semaphore   chan struct{} // limit server requestPOOL
-	requestPOOL = sync.Pool{New: func() interface{} { return new(requestStruct) }}
+	logFile *os.File
+	wg      sync.WaitGroup
 )
 
-type requestStruct struct {
-	index      int
-	httREQUEST *http.Request
-	result     []any
-	url        string
-	json       any
+type connectionParams struct {
+	url      string
+	login    string
+	password string
+	headers  map[string]string
 }
+
+// limit server requests
+var simaphore chan struct{}
 
 type jsonStruct struct {
 	BaseURL  string            `json:"base_Url"`
@@ -42,6 +41,10 @@ type jsonStruct struct {
 	Data     any               `json:"data"`
 }
 
+type resultStruct struct {
+	Data []any `json:"data"`
+}
+
 type errorDetails struct {
 	Status int    `json:"status"`
 	Reason string `json:"reason"`
@@ -54,13 +57,8 @@ type errorStruct struct {
 	Error errorDetails `json:"error"`
 }
 
-type anyResponseSlice []map[string]any
-
-type anyResponse map[string]any
-
-type resultStruct struct {
-	Data []any `json:"data"`
-}
+type multResponse []map[string]any
+type singleResponse map[string]any
 
 func errorToStruct(index, status int, reason, url string, req interface{}) errorStruct {
 	newError := errorStruct{
@@ -146,75 +144,88 @@ func errWrap(err *error, fnc string, desc string) error {
 	return fmt.Errorf("%v\n (func: %v desc: %v)", unpErr.Error(), fnc, desc)
 }
 
-func httpREQUEST() {
-	for dataFlow := range requestChan {
-		wg.Add(1)
-		semaphore <- struct{}{}
+func post(resultMap []any, k int, v any, params connectionParams) {
+	var (
+		requestJSON   []byte
+		reqAPI        *http.Request
+		resp          *http.Response
+		responseJSON  []byte
+		err           error
+		defaultStatus = 0
+	)
 
-		go func(dataFlow *requestStruct) {
-			var (
-				client              http.Client
-				resp                *http.Response
-				err                 error
-				responseJSON        []byte
-				defaultStatus       = 0
-				responseStructSlice anyResponseSlice
-				responseStruct      anyResponse
-			)
-			defer wg.Done()
-			defer func() { <-semaphore }()
+	defer wg.Done()
 
-			client = http.Client{}
-			resp, err = client.Do(dataFlow.httREQUEST)
-			if err != nil {
-				if resp != nil {
-					defaultStatus = resp.StatusCode
-				}
-				dataFlow.result[dataFlow.index] = errorToStruct(dataFlow.index, defaultStatus,
-					err.Error(), dataFlow.url, dataFlow.json)
-				return
-			}
+	//limit requests
+	simaphore <- struct{}{}
+	defer func() {
+		<-simaphore
+	}()
 
-			defer func(Body io.ReadCloser) {
-				err = Body.Close()
-				if err != nil {
-					loggErrorMessage(err)
-				}
-			}(resp.Body)
-
-			responseJSON, err = io.ReadAll(resp.Body)
-			if err != nil {
-				dataFlow.result[dataFlow.index] = errorToStruct(dataFlow.index, defaultStatus,
-					err.Error(), dataFlow.url, dataFlow.json)
-				return
-			}
-
-			if errUnmSlice := json.Unmarshal(responseJSON, &responseStructSlice); errUnmSlice != nil {
-				errUnm := json.Unmarshal(responseJSON, &responseStruct)
-				if errUnm != nil {
-					dataFlow.result[dataFlow.index] = errorToStruct(dataFlow.index, defaultStatus,
-						errUnm.Error(), dataFlow.url, dataFlow.json)
-					return
-				}
-				dataFlow.result[dataFlow.index] = responseStruct
-				return
-			}
-
-			dataFlow.result[dataFlow.index] = responseStructSlice
-
-		}(dataFlow)
+	requestJSON, err = json.Marshal(&v)
+	if err != nil {
+		resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), params.url, v)
+		return
 	}
+
+	reqAPI, err = http.NewRequest("POST", params.url, bytes.NewBuffer(requestJSON))
+	if err != nil {
+		resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), params.url, v)
+		return
+	}
+
+	for key, value := range params.headers {
+		reqAPI.Header.Set(key, value)
+	}
+	reqAPI.SetBasicAuth(params.login, params.password)
+
+	client := http.Client{}
+	resp, err = client.Do(reqAPI)
+	if err != nil {
+		if resp != nil {
+			defaultStatus = resp.StatusCode
+		}
+		resultMap[k] = errorToStruct(k, defaultStatus, err.Error(), params.url, v)
+		return
+	}
+
+	defer func(Body io.ReadCloser) {
+		err = Body.Close()
+		if err != nil {
+			loggErrorMessage(err)
+		}
+	}(resp.Body)
+
+	responseJSON, err = io.ReadAll(resp.Body)
+	if err != nil {
+		resultMap[k] = errorToStruct(k, resp.StatusCode, err.Error(), params.url, v)
+		return
+	}
+
+	var rawMessage json.RawMessage
+	err = json.Unmarshal(responseJSON, &rawMessage)
+	if err != nil {
+		errDesc := err.Error()
+		if responseJSON != nil {
+			errDesc = errWrap(&err, "asyncApi", "err = json.Unmarshal(responseJSON, &responseStruct):"+
+				string(responseJSON)).Error()
+		}
+		resultMap[k] = errorToStruct(k, resp.StatusCode, errDesc, params.url, v)
+		return
+	}
+
+	//if _, ok := rawMessage[0]; !ok {
+	//
+	//}
+
+	resultMap[k] = rawMessage[0] //responseStruct
 }
 
 func callAsyncApi(uuid *string) error {
 	var (
 		data         *jsonStruct
 		err          error
-		allFilled    bool
-		reqJSON      []byte
 		responseJSON []byte
-		reqAPI       *http.Request
-		result       []any
 	)
 
 	tBegin := time.Now()
@@ -231,100 +242,36 @@ func callAsyncApi(uuid *string) error {
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
 
-	//resultLength := len(requests)
-	resultLength := 300 //TEST
-	connPool := 200     //default
+	resultLength := len(requests)
+	//resultLength := 500 //testing
+	connPool := 50 //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
-
-	//channels
-	requestChan = make(chan *requestStruct)
-	semaphore = make(chan struct{}, connPool)
-	result = make([]any, resultLength)
-
+	simaphore = make(chan struct{}, connPool)
+	resultMap := make([]any, resultLength)
 	prefHTTP := "https://"
 	if data.Ssl == false || data.Ssl == "false" {
 		prefHTTP = "http://"
 	}
-	url := prefHTTP + data.BaseURL + data.Url
-	login := data.Login
-	password := data.Password
-	headers := data.Headers
 
-	v := requests[0] //TEST
-
-	go httpREQUEST()
-
-labelMain:
-	for {
-		allFilled = true
-		//labelSlice:
-		//for i, v := range result {
-		for k := 0; k < resultLength; k++ { //TEST
-			//if v == nil {
-			//allFilled = false
-
-			reqJSON, err = json.Marshal(&v)
-			if err != nil {
-				result[k] = errorToStruct(k, 0, err.Error(), url, v)
-				continue
-			}
-
-			reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
-			if err != nil {
-				result[k] = errorToStruct(k, 0, err.Error(), url, v)
-				continue
-			}
-			for key, value := range headers {
-				reqAPI.Header.Set(key, value)
-			}
-			reqAPI.SetBasicAuth(login, password)
-
-			newDataFlow := requestPOOL.Get().(*requestStruct)
-			newDataFlow.index = k
-			newDataFlow.httREQUEST = reqAPI
-			newDataFlow.result = result
-			newDataFlow.url = url
-			newDataFlow.json = v
-			requestChan <- newDataFlow
-			//}
-
-			//select {
-			//case <-doneRequest:
-			//	{
-			//		wg.Wait()
-			//
-			//		//drain the channel
-			//		for len(doneRequest) > 0 {
-			//			<-doneRequest
-			//		}
-			//
-			//		if conLimit == 1 {
-			//			fmt.Printf("BREAK ALL conLimit - %v\n", conLimit)
-			//			wg.Wait()
-			//			break labelMain
-			//		} else {
-			//			conLimit = int(math.Floor(float64(conLimit / 2)))
-			//			fmt.Printf("REDUSING conLimit - %v\n", conLimit)
-			//			semaphore = make(chan struct{}, conLimit)
-			//			break labelSlice
-			//		}
-			//
-			//	}
-			//default:
-			//}
-		}
-		wg.Wait()
-		if allFilled {
-			break labelMain
-		}
+	connParams := connectionParams{
+		url:      prefHTTP + data.BaseURL + data.Url,
+		login:    data.Login,
+		password: data.Password,
+		headers:  data.Headers,
 	}
 
-	close(requestChan)
-	close(semaphore)
+	//v := requests[0] //testing
+	wg.Add(resultLength)
+	for k, v := range requests {
+		//for k := 0; k < resultLength; k++ { //testing
+		go post(resultMap, k, v, connParams)
+	}
 
-	resStruct := resultStruct{Data: result}
+	wg.Wait()
+
+	resStruct := resultStruct{Data: resultMap}
 	responseJSON, err = json.Marshal(&resStruct)
 
 	var prettyJSON bytes.Buffer
