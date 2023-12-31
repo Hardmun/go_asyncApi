@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ var (
 	wg          sync.WaitGroup
 	requestChan chan *requestStruct
 	semaphore   chan struct{} // limit server requestPOOL
+	doneRequest chan struct{} //signal to reduce threads
 	requestPOOL = sync.Pool{New: func() interface{} { return new(requestStruct) }}
 )
 
@@ -74,7 +76,7 @@ type resultStruct struct {
 	Data []any `json:"data"`
 }
 
-func getErrorStructure(index, status int, statusString, errDescription, url string, req interface{}) errorStruct {
+func getErrorStructure(index, status int, statusString, errDescription, url string, req interface{}) *errorStruct {
 	newError := errorStruct{
 		Error: errorDetails{
 			Status:       status,
@@ -86,7 +88,13 @@ func getErrorStructure(index, status int, statusString, errDescription, url stri
 		Index: index,
 	}
 
-	return newError
+	select {
+	case doneRequest <- struct{}{}:
+	default:
+	}
+
+	_ = newError
+	return nil
 }
 
 func openFile(path string) (*os.File, error) {
@@ -266,8 +274,8 @@ func callAsyncApi(uuid *string) error {
 	}
 
 	//resultLength := len(requests)
-	resultLength := 100 //TEST
-	connPool := 20      //default
+	resultLength := 1800 //TEST
+	connPool := 900      //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
@@ -275,6 +283,7 @@ func callAsyncApi(uuid *string) error {
 	//channels
 	requestChan = make(chan *requestStruct)
 	semaphore = make(chan struct{}, connPool)
+	doneRequest = make(chan struct{}, 1)
 	result = make([]any, resultLength)
 
 	prefHTTP := "https://"
@@ -293,61 +302,67 @@ func callAsyncApi(uuid *string) error {
 labelMain:
 	for {
 		allFilled = true
-		//labelSlice:
+	labelSlice:
 		//for i, v := range result {
 		for k := 0; k < resultLength; k++ { //TEST
-			//if v == nil {
-			//allFilled = false
+			if result[k] == nil {
+				allFilled = false
 
-			reqJSON, err = json.Marshal(&v)
-			if err != nil {
-				result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
-				continue
+				reqJSON, err = json.Marshal(&v)
+				if err != nil {
+					result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
+					continue
+				}
+
+				reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
+				if err != nil {
+					result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
+					continue
+				}
+				for key, value := range headers {
+					reqAPI.Header.Set(key, value)
+				}
+				reqAPI.SetBasicAuth(login, password)
+
+				newDataFlow := requestPOOL.Get().(*requestStruct)
+				newDataFlow.index = k
+				newDataFlow.httREQUEST = reqAPI
+				newDataFlow.result = result
+				newDataFlow.url = url
+				newDataFlow.json = v
+				requestChan <- newDataFlow
 			}
 
-			reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
-			if err != nil {
-				result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
-				continue
-			}
-			for key, value := range headers {
-				reqAPI.Header.Set(key, value)
-			}
-			reqAPI.SetBasicAuth(login, password)
+			select {
+			case <-doneRequest:
+				{
+					//drain the requestChan
+					for len(requestChan) > 0 {
+						<-requestChan
+					}
 
-			newDataFlow := requestPOOL.Get().(*requestStruct)
-			newDataFlow.index = k
-			newDataFlow.httREQUEST = reqAPI
-			newDataFlow.result = result
-			newDataFlow.url = url
-			newDataFlow.json = v
-			requestChan <- newDataFlow
-			//}
+					wg.Wait()
 
-			//select {
-			//case <-doneRequest:
-			//	{
-			//		wg.Wait()
-			//
-			//		//drain the channel
-			//		for len(doneRequest) > 0 {
-			//			<-doneRequest
-			//		}
-			//
-			//		if conLimit == 1 {
-			//			fmt.Printf("BREAK ALL conLimit - %v\n", conLimit)
-			//			wg.Wait()
-			//			break labelMain
-			//		} else {
-			//			conLimit = int(math.Floor(float64(conLimit / 2)))
-			//			fmt.Printf("REDUSING conLimit - %v\n", conLimit)
-			//			semaphore = make(chan struct{}, conLimit)
-			//			break labelSlice
-			//		}
-			//
-			//	}
-			//default:
-			//}
+					//drain the channel
+					for len(doneRequest) > 0 {
+						<-doneRequest
+					}
+
+					if connPool == 1 {
+						fmt.Printf("BREAK ALL connPool - %v\n", connPool)
+						wg.Wait()
+						break labelMain
+					} else {
+						connPool = int(math.Floor(float64(connPool / 2)))
+						fmt.Printf("REDUSING connPool - %v\n", connPool)
+						semaphore = make(chan struct{}, connPool)
+						break labelSlice
+					}
+
+				}
+			default:
+			}
+
 		}
 		wg.Wait()
 		if allFilled {
@@ -356,6 +371,7 @@ labelMain:
 	}
 
 	close(requestChan)
+	close(doneRequest)
 	close(semaphore)
 
 	resStruct := resultStruct{Data: result}
