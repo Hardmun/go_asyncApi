@@ -224,7 +224,17 @@ func httpREQUEST() {
 				return
 			}
 
-			dataFlow.result[dataFlow.index] = responseStructSlice
+			switch ln := len(responseStructSlice); {
+			case ln == 0:
+				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
+					"Result is empty", dataFlow.url, dataFlow.json)
+			case ln == 1:
+				responseStructSlice[0]["index"] = dataFlow.index
+				dataFlow.result[dataFlow.index] = responseStructSlice
+			case ln > 1:
+				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
+					string(responseJSON), dataFlow.url, dataFlow.json)
+			}
 
 		}(dataFlow)
 	}
@@ -256,8 +266,8 @@ func callAsyncApi(uuid *string) error {
 	}
 
 	//resultLength := len(requests)
-	resultLength := 500 //TEST
-	connPool := 300     //default
+	resultLength := 100 //TEST
+	connPool := 20      //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
