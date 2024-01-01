@@ -168,7 +168,6 @@ func errWrap(err *error, fnc string, desc string) error {
 
 func httpREQUEST() {
 	for dataFlow := range requestChan {
-		wg.Add(1)
 		semaphore <- struct{}{}
 
 		go func(dataFlow *requestStruct) {
@@ -273,8 +272,8 @@ func callAsyncApi(uuid *string) error {
 	}
 
 	//resultLength := len(requests)
-	resultLength := 1800 //TEST
-	connPool := 900      //default
+	resultLength := 200 //TEST
+	connPool := 50      //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
@@ -329,6 +328,8 @@ labelMain:
 				newDataFlow.result = result
 				newDataFlow.url = url
 				newDataFlow.json = v
+
+				wg.Add(1)
 				requestChan <- newDataFlow
 			}
 
