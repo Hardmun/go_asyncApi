@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -26,6 +27,7 @@ var (
 type requestStruct struct {
 	index      int
 	httREQUEST *http.Request
+	errors     []string
 	result     []any
 	url        string
 	json       any
@@ -40,6 +42,7 @@ type jsonStruct struct {
 	Method   string            `json:"method"`
 	ConnPool int               `json:"connPool"`
 	Ord      string            `json:"ord"`
+	Errors   []string          `json:"errors"`
 	Headers  map[string]string `json:"headers"`
 	Data     any               `json:"data"`
 }
@@ -76,16 +79,16 @@ type resultStruct struct {
 	Data []any `json:"data"`
 }
 
-func getErrorStructure(index, status int, statusString, errDescription, url string, req interface{}) interface{} {
+func getErrorStructure(index, status *int, statusString, url *string, err *error, req interface{}) interface{} {
 	newError := errorStruct{
 		Error: errorDetails{
-			Status:       status,
-			StatusString: statusString,
-			Reason:       errDescription,
-			Url:          url,
+			Status:       *status,
+			StatusString: *statusString,
+			Reason:       (*err).Error(),
+			Url:          *url,
 			Json:         req,
 		},
-		Index: index,
+		Index: *index,
 	}
 
 	select {
@@ -191,8 +194,8 @@ func httpREQUEST() {
 					defaultStatus = resp.StatusCode
 					defaultStrStatus = resp.Status
 				}
-				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, defaultStatus, defaultStrStatus,
-					err.Error(), dataFlow.url, dataFlow.json)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus, &defaultStrStatus,
+					&dataFlow.url, &err, &dataFlow.json)
 				return
 			}
 
@@ -205,24 +208,24 @@ func httpREQUEST() {
 
 			responseJSON, err = io.ReadAll(resp.Body)
 			if err != nil {
-				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, defaultStatus, defaultStrStatus,
-					err.Error(), dataFlow.url, dataFlow.json)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus, &defaultStrStatus,
+					&dataFlow.url, &err, &dataFlow.json)
 				return
 			}
 
 			if errUnmSlice := json.Unmarshal(responseJSON, &responseStructSlice); errUnmSlice != nil {
 				errUnm := json.Unmarshal(responseJSON, &responseStruct)
 				if errUnm != nil {
-					dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
-						errUnm.Error(), dataFlow.url, dataFlow.json)
+					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
+						&dataFlow.url, &errUnm, &dataFlow.json)
 					return
 				}
 
 				if responseStruct.isMScoutError() {
-					errMsg := responseStruct["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
-						"ErrorMessage"].(string)
-					dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
-						errMsg, dataFlow.url, dataFlow.json)
+					errMsg := errors.New(responseStruct["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
+						"ErrorMessage"].(string))
+					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
+						&dataFlow.url, &errMsg, &dataFlow.json)
 				} else {
 					responseStruct["index"] = dataFlow.index
 					dataFlow.result[dataFlow.index] = responseStruct
@@ -232,14 +235,17 @@ func httpREQUEST() {
 
 			switch ln := len(responseStructSlice); {
 			case ln == 0:
-				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
-					"Result is empty", dataFlow.url, dataFlow.json)
+				//goland:noinspection GoErrorStringFormat
+				err = errors.New("Result is empty")
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
+					&dataFlow.url, &err, &dataFlow.json)
 			case ln == 1:
 				responseStructSlice[0]["index"] = dataFlow.index
-				dataFlow.result[dataFlow.index] = responseStructSlice
+				dataFlow.result[dataFlow.index] = responseStructSlice[0]
 			case ln > 1:
-				dataFlow.result[dataFlow.index] = getErrorStructure(dataFlow.index, resp.StatusCode, resp.Status,
-					string(responseJSON), dataFlow.url, dataFlow.json)
+				err = errors.New(string(responseJSON))
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
+					&dataFlow.url, &err, &dataFlow.json)
 			}
 
 		}(dataFlow)
@@ -248,13 +254,16 @@ func httpREQUEST() {
 
 func callAsyncApi(uuid *string) error {
 	var (
-		data         *jsonStruct
-		err          error
-		allFilled    bool
-		reqJSON      []byte
-		responseJSON []byte
-		reqAPI       *http.Request
-		result       []any
+		defaultStatus *string
+		defaultCode   *int
+		errorsInc     []string
+		data          *jsonStruct
+		err           error
+		allFilled     bool
+		reqJSON       []byte
+		responseJSON  []byte
+		reqAPI        *http.Request
+		result        []any
 	)
 
 	tBegin := time.Now()
@@ -272,10 +281,14 @@ func callAsyncApi(uuid *string) error {
 	}
 
 	//resultLength := len(requests)
-	resultLength := 200 //TEST
-	connPool := 50      //default
+	resultLength := 1 //TEST
+	connPool := 50    //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
+	}
+
+	if len(data.Errors) > 0 {
+		errorsInc = data.Errors
 	}
 
 	//channels
@@ -308,13 +321,13 @@ labelMain:
 
 				reqJSON, err = json.Marshal(&v)
 				if err != nil {
-					result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
+					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v)
 					continue
 				}
 
 				reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
 				if err != nil {
-					result[k] = getErrorStructure(k, 0, "", err.Error(), url, v)
+					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, v)
 					continue
 				}
 				for key, value := range headers {
@@ -328,6 +341,7 @@ labelMain:
 				newDataFlow.result = result
 				newDataFlow.url = url
 				newDataFlow.json = v
+				newDataFlow.errors = errorsInc
 
 				wg.Add(1)
 				requestChan <- newDataFlow
@@ -344,7 +358,6 @@ labelMain:
 
 					if connPool == 1 {
 						fmt.Printf("BREAK ALL connPool - %v\n", connPool)
-						wg.Wait()
 						break labelMain
 					} else {
 						connPool = int(math.Floor(float64(connPool / 2)))
@@ -352,7 +365,6 @@ labelMain:
 						semaphore = make(chan struct{}, connPool)
 						break labelSlice
 					}
-
 				}
 			default:
 			}

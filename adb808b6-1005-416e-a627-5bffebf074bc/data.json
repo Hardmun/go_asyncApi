@@ -5,6 +5,11 @@
   "login": "vitaly.nikulin@okkam.ru",
   "password": "vukyz9O79?",
   "ord": "ms",
+  "errors": [
+    "504",
+    "505"
+  ],
+  "ConnPool": 50,
   "headers": {
     "Content-type": "application/json"
   },
