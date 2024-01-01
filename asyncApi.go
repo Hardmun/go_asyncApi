@@ -76,7 +76,7 @@ type resultStruct struct {
 	Data []any `json:"data"`
 }
 
-func getErrorStructure(index, status int, statusString, errDescription, url string, req interface{}) *errorStruct {
+func getErrorStructure(index, status int, statusString, errDescription, url string, req interface{}) interface{} {
 	newError := errorStruct{
 		Error: errorDetails{
 			Status:       status,
@@ -92,7 +92,6 @@ func getErrorStructure(index, status int, statusString, errDescription, url stri
 	case doneRequest <- struct{}{}:
 	default:
 	}
-
 	_ = newError
 	return nil
 }
@@ -336,13 +335,7 @@ labelMain:
 			select {
 			case <-doneRequest:
 				{
-					//drain the requestChan
-					for len(requestChan) > 0 {
-						<-requestChan
-					}
-
 					wg.Wait()
-
 					//drain the channel
 					for len(doneRequest) > 0 {
 						<-doneRequest
