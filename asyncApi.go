@@ -78,16 +78,33 @@ func (ms *anyResponse) isMScoutError() error {
 		"ErrorMessage"].(string))
 }
 
-func (ms *anyResponse) isYandexError() error {
-	if _, ok := (*ms)["ErrorType"]; !ok {
+func (ms *anyResponse) isYandexError(statusCode *int) error {
+	if _, ok := (*ms)["detail"]; !ok {
 		return nil
 	}
-	if _, ok := (*ms)["ErrorItems"]; !ok {
+	if _, ok := (*ms)["data"]; ok {
 		return nil
 	}
 
-	return errors.New((*ms)["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
-		"ErrorMessage"].(string))
+	if *statusCode == 404 {
+		return errors.New("Result is empty")
+	}
+
+	return errors.New((*ms)["detail"].(string))
+}
+
+func (ms *anyResponse) isYandexOK(index *int) (interface{}, error) {
+	if data, ok := (*ms)["data"]; ok {
+		data.(map[string]any)["index"] = index
+		for k, v := range *ms {
+			if k != "data" {
+				data.(map[string]any)[k] = v
+			}
+		}
+		return data, nil
+	}
+	(*ms)["index"] = index
+	return ms, nil
 }
 
 type resultStruct struct {
@@ -246,9 +263,11 @@ func httpREQUEST() {
 				if err = responseStruct.isMScoutError(); err != nil {
 					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
-				} else if err = responseStruct.isYandexError(); err != nil {
+				} else if err = responseStruct.isYandexError(&resp.StatusCode); err != nil {
 					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
+				} else if yandexResp, isNil := responseStruct.isYandexOK(&dataFlow.index); isNil == nil {
+					dataFlow.result[dataFlow.index] = yandexResp
 				} else {
 					responseStruct["index"] = dataFlow.index
 					dataFlow.result[dataFlow.index] = responseStruct
