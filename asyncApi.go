@@ -29,6 +29,7 @@ var (
 type requestStruct struct {
 	index      int
 	httREQUEST *http.Request
+	method     string
 	errlist    []string
 	result     []any
 	url        string
@@ -65,14 +66,28 @@ type errorStruct struct {
 type anyResponseSlice []map[string]any
 type anyResponse map[string]any
 
-func (ms *anyResponse) isMScoutError() bool {
+func (ms *anyResponse) isMScoutError() error {
 	if _, ok := (*ms)["ErrorType"]; !ok {
-		return false
+		return nil
 	}
 	if _, ok := (*ms)["ErrorItems"]; !ok {
-		return false
+		return nil
 	}
-	return true
+
+	return errors.New((*ms)["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
+		"ErrorMessage"].(string))
+}
+
+func (ms *anyResponse) isYandexError() error {
+	if _, ok := (*ms)["ErrorType"]; !ok {
+		return nil
+	}
+	if _, ok := (*ms)["ErrorItems"]; !ok {
+		return nil
+	}
+
+	return errors.New((*ms)["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
+		"ErrorMessage"].(string))
 }
 
 type resultStruct struct {
@@ -228,11 +243,12 @@ func httpREQUEST() {
 					return
 				}
 
-				if responseStruct.isMScoutError() {
-					errMsg := errors.New(responseStruct["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
-						"ErrorMessage"].(string))
+				if err = responseStruct.isMScoutError(); err != nil {
 					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
-						&resp.Status, &dataFlow.url, &errMsg, &dataFlow.json, &dataFlow.errlist)
+						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
+				} else if err = responseStruct.isYandexError(); err != nil {
+					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
+						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 				} else {
 					responseStruct["index"] = dataFlow.index
 					dataFlow.result[dataFlow.index] = responseStruct
@@ -260,17 +276,15 @@ func httpREQUEST() {
 
 func callAsyncApi(uuid *string) error {
 	var (
-		defaultStatus *string
-		defaultCode   *int
-		errlist       []string
-		data          *jsonStruct
-		err           error
-		basicAuth     bool
-		allFilled     bool
-		reqJSON       []byte
-		responseJSON  []byte
-		reqAPI        *http.Request
-		result        []any
+		errlist      []string
+		data         *jsonStruct
+		err          error
+		basicAuth    bool
+		allFilled    bool
+		reqJSON      []byte
+		responseJSON []byte
+		reqAPI       *http.Request
+		result       []any
 	)
 
 	data, err = openJSON(filepath.Join(*uuid, "data.json"))
@@ -293,6 +307,8 @@ func callAsyncApi(uuid *string) error {
 	if len(data.Errlist) > 0 {
 		errlist = data.Errlist
 	}
+	defaultCode := new(int)
+	defaultStatus := new(string)
 
 	//channels
 	requestChan = make(chan *requestStruct)
@@ -308,6 +324,7 @@ func callAsyncApi(uuid *string) error {
 	login := data.Login
 	password := data.Password
 	headers := data.Headers
+	method := strings.ToUpper(data.Method)
 
 	//v := requests[0] //TEST
 	go httpREQUEST()
@@ -327,11 +344,31 @@ labelMain:
 					continue
 				}
 
-				reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
-				if err != nil {
-					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, v, &errlist)
+				if method == "POST" {
+					reqAPI, err = http.NewRequest(method, url, bytes.NewBuffer(reqJSON))
+					if err != nil {
+						result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v, &errlist)
+						continue
+					}
+				} else if method == "GET" {
+					reqAPI, err = http.NewRequest(method, url, nil)
+					if err != nil {
+						result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v, &errlist)
+						continue
+					}
+
+					q := reqAPI.URL.Query()
+					for parN, parV := range v.(map[string]interface{}) {
+						q.Add(parN, parV.(string))
+					}
+					reqAPI.URL.RawQuery = q.Encode()
+
+				} else {
+					err = errors.New("Only two methods accepted :GET, POST.")
+					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v, &errlist)
 					continue
 				}
+
 				basicAuth = true
 				for key, value := range headers {
 					reqAPI.Header.Set(key, value)
@@ -346,6 +383,7 @@ labelMain:
 				newDataFlow := requestPOOL.Get().(*requestStruct)
 				newDataFlow.index = k
 				newDataFlow.httREQUEST = reqAPI
+				newDataFlow.method = method
 				newDataFlow.result = result
 				newDataFlow.url = url
 				newDataFlow.json = v
@@ -415,11 +453,11 @@ func clearTempFiles(uuid *string) {
 func main() {
 	var err error
 
-	exePath, errExe := os.Executable()
-	if errExe != nil {
-		log.Fatal(err)
-	}
-	absPath = filepath.Dir(exePath)
+	//exePath, errExe := os.Executable()
+	//if errExe != nil {
+	//	log.Fatal(err)
+	//}
+	//absPath = filepath.Dir(exePath)
 
 	logFile, err = openFile("errors.log")
 	if err != nil {
