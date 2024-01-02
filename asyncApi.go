@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -62,7 +63,6 @@ type errorStruct struct {
 }
 
 type anyResponseSlice []map[string]any
-
 type anyResponse map[string]any
 
 func (ms *anyResponse) isMScoutError() bool {
@@ -94,7 +94,8 @@ func getErrorStructure(index, status *int, statusString, url *string, err *error
 	}
 
 	for _, e := range *errlist {
-		if strings.Contains(*statusString, e) || strings.Contains((*err).Error(), e) {
+		if (strings.Contains(*statusString, e) || strings.Contains((*err).Error(), e)) && e != "" {
+			loggErrorMessage(errors.New("Activating error:\n" + *statusString + "\n" + (*err).Error()))
 			select {
 			case doneRequest <- struct{}{}:
 			default:
@@ -264,6 +265,7 @@ func callAsyncApi(uuid *string) error {
 		errlist       []string
 		data          *jsonStruct
 		err           error
+		basicAuth     bool
 		allFilled     bool
 		reqJSON       []byte
 		responseJSON  []byte
@@ -288,7 +290,6 @@ func callAsyncApi(uuid *string) error {
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
-
 	if len(data.Errlist) > 0 {
 		errlist = data.Errlist
 	}
@@ -331,10 +332,16 @@ labelMain:
 					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, v, &errlist)
 					continue
 				}
+				basicAuth = true
 				for key, value := range headers {
 					reqAPI.Header.Set(key, value)
+					if strings.ToLower(key) == "authorization" {
+						basicAuth = false
+					}
 				}
-				reqAPI.SetBasicAuth(login, password)
+				if basicAuth {
+					reqAPI.SetBasicAuth(login, password)
+				}
 
 				newDataFlow := requestPOOL.Get().(*requestStruct)
 				newDataFlow.index = k
@@ -358,11 +365,10 @@ labelMain:
 					}
 
 					if connPool == 1 {
-						fmt.Printf("BREAK ALL connPool - %v\n", connPool)
 						break labelMain
 					} else {
 						connPool = int(math.Floor(float64(connPool / 2)))
-						fmt.Printf("REDUSING connPool - %v\n", connPool)
+						loggErrorMessage(errors.New("Reduced threads to:" + strconv.Itoa(connPool)))
 						semaphore = make(chan struct{}, connPool)
 						break labelSlice
 					}
@@ -394,7 +400,7 @@ labelMain:
 }
 
 func clearLogs() {
-	if err := os.Truncate("error.log", 0); err != nil {
+	if err := os.Truncate(filepath.Join(absPath, "errors.log"), 0); err != nil {
 		systemError(err)
 	}
 }
@@ -409,11 +415,11 @@ func clearTempFiles(uuid *string) {
 func main() {
 	var err error
 
-	//exePath, errExe := os.Executable()
-	//if errExe != nil {
-	//	log.Fatal(err)
-	//}
-	//absPath = filepath.Dir(exePath)
+	exePath, errExe := os.Executable()
+	if errExe != nil {
+		log.Fatal(err)
+	}
+	absPath = filepath.Dir(exePath)
 
 	logFile, err = openFile("errors.log")
 	if err != nil {
