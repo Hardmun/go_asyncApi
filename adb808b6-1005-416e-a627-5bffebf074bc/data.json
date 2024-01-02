@@ -1,32 +1,22 @@
 {
-  "base_url": "demo.mediascout.ru",
-  "url": "/webapi/clients/getclients",
+  "base_url": "ord-prestable.yandex.net",
+  "url": "/api/v3/organization",
   "ssl": "true",
-  "login": "vitaly.nikulin@okkam.ru",
-  "password": "vukyz9O79?",
-  "Authorization" : "",
-  "ord": "ms",
-  "connPool" : 50,
-  "errlist": [
-    "400"
-  ],
+  "ord": "Yandex",
+  "errlist": [],
+  "login": "",
+  "password": "",
   "headers": {
+    "Authorization": "Bearer y0_AgAAAABvgzYeAAhgQAAAAADtS77vnBmwazdyTa2OnV05XvrulmIGkUw",
     "Content-type": "application/json"
   },
-  "method": "post",
+  "method": "get",
   "data": [
     {
-      "Inn": "7717654289",
-      "Status": "Active",
-      "StatusQ": "Active"
+      "object_id": "17c1ff28-b752-4f1a-b70f-de48bc4edc21"
     },
     {
-      "Inn": "7804347179",
-      "Status": "Active"
-    },
-    {
-      "Inn": "7717654289",
-      "Status": "Active"
+      "object_id": "555a1dc7-db57-4166-be08-9ac6db5c4555"
     }
   ]
 }
