@@ -1,0 +1,31 @@
+{
+  "base_url": "demo.mediascout.ru",
+  "url": "/webapi/clients/getclients",
+  "ssl": "true",
+  "login": "vitaly.nikulin@okkam.ru",
+  "password": "vukyz9O79?",
+  "ord": "ms",
+  "connPool" : 50,
+  "errlist": [
+    "400"
+  ],
+  "headers": {
+    "Content-type": "application/json"
+  },
+  "method": "post",
+  "data": [
+    {
+      "Inn": "7717654289",
+      "Status": "Active",
+      "StatusQ": "Active"
+    },
+    {
+      "Inn": "7804347179",
+      "Status": "Active"
+    },
+    {
+      "Inn": "7717654289",
+      "Status": "Active"
+    }
+  ]
+}

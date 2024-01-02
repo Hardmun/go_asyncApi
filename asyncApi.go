@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
-	"time"
 )
 
 var (
@@ -22,12 +22,13 @@ var (
 	semaphore   chan struct{} // limit server requestPOOL
 	doneRequest chan struct{} //signal to reduce threads
 	requestPOOL = sync.Pool{New: func() interface{} { return new(requestStruct) }}
+	absPath     string
 )
 
 type requestStruct struct {
 	index      int
 	httREQUEST *http.Request
-	errors     []string
+	errlist    []string
 	result     []any
 	url        string
 	json       any
@@ -42,7 +43,7 @@ type jsonStruct struct {
 	Method   string            `json:"method"`
 	ConnPool int               `json:"connPool"`
 	Ord      string            `json:"ord"`
-	Errors   []string          `json:"errors"`
+	Errlist  []string          `json:"errlist"`
 	Headers  map[string]string `json:"headers"`
 	Data     any               `json:"data"`
 }
@@ -71,7 +72,6 @@ func (ms *anyResponse) isMScoutError() bool {
 	if _, ok := (*ms)["ErrorItems"]; !ok {
 		return false
 	}
-
 	return true
 }
 
@@ -79,7 +79,9 @@ type resultStruct struct {
 	Data []any `json:"data"`
 }
 
-func getErrorStructure(index, status *int, statusString, url *string, err *error, req interface{}) interface{} {
+func getErrorStructure(index, status *int, statusString, url *string, err *error,
+	req interface{}, errlist *[]string) interface{} {
+
 	newError := errorStruct{
 		Error: errorDetails{
 			Status:       *status,
@@ -91,16 +93,20 @@ func getErrorStructure(index, status *int, statusString, url *string, err *error
 		Index: *index,
 	}
 
-	select {
-	case doneRequest <- struct{}{}:
-	default:
+	for _, e := range *errlist {
+		if strings.Contains(*statusString, e) || strings.Contains((*err).Error(), e) {
+			select {
+			case doneRequest <- struct{}{}:
+			default:
+			}
+			return nil
+		}
 	}
-	_ = newError
-	return nil
+	return newError
 }
 
 func openFile(path string) (*os.File, error) {
-	lFile, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	lFile, err := os.OpenFile(filepath.Join(absPath, path), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +142,10 @@ func openJSON(path string) (*jsonStruct, error) {
 		byteJSON []byte
 	)
 
-	jsonFile, err = os.Open(path)
+	jsonFile, err = os.Open(filepath.Join(absPath, path))
 	if err != nil {
-		return nil, errWrap(&err, "openJSON", "jsonFile, err = os.Open(path)")
+		return nil, errWrap(&err, "openJSON", "jsonFile, err = os.Open(path)"+"\n The pass is: "+
+			filepath.Join(absPath, path))
 	}
 
 	byteJSON, err = io.ReadAll(jsonFile)
@@ -160,7 +167,6 @@ func openJSON(path string) (*jsonStruct, error) {
 	if err != nil {
 		return nil, errWrap(&err, "openJSON", "err = json.Unmarshal(byteJSON, &data)")
 	}
-
 	return &data, nil
 }
 
@@ -194,8 +200,8 @@ func httpREQUEST() {
 					defaultStatus = resp.StatusCode
 					defaultStrStatus = resp.Status
 				}
-				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus, &defaultStrStatus,
-					&dataFlow.url, &err, &dataFlow.json)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus,
+					&defaultStrStatus, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 				return
 			}
 
@@ -208,24 +214,24 @@ func httpREQUEST() {
 
 			responseJSON, err = io.ReadAll(resp.Body)
 			if err != nil {
-				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus, &defaultStrStatus,
-					&dataFlow.url, &err, &dataFlow.json)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus,
+					&defaultStrStatus, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 				return
 			}
 
 			if errUnmSlice := json.Unmarshal(responseJSON, &responseStructSlice); errUnmSlice != nil {
 				errUnm := json.Unmarshal(responseJSON, &responseStruct)
 				if errUnm != nil {
-					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
-						&dataFlow.url, &errUnm, &dataFlow.json)
+					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
+						&resp.Status, &dataFlow.url, &errUnm, &dataFlow.json, &dataFlow.errlist)
 					return
 				}
 
 				if responseStruct.isMScoutError() {
 					errMsg := errors.New(responseStruct["ErrorItems"].([]interface{})[0].(map[string]interface{})[""+
 						"ErrorMessage"].(string))
-					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
-						&dataFlow.url, &errMsg, &dataFlow.json)
+					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
+						&resp.Status, &dataFlow.url, &errMsg, &dataFlow.json, &dataFlow.errlist)
 				} else {
 					responseStruct["index"] = dataFlow.index
 					dataFlow.result[dataFlow.index] = responseStruct
@@ -235,17 +241,16 @@ func httpREQUEST() {
 
 			switch ln := len(responseStructSlice); {
 			case ln == 0:
-				//goland:noinspection GoErrorStringFormat
 				err = errors.New("Result is empty")
-				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
-					&dataFlow.url, &err, &dataFlow.json)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
+					&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 			case ln == 1:
 				responseStructSlice[0]["index"] = dataFlow.index
 				dataFlow.result[dataFlow.index] = responseStructSlice[0]
 			case ln > 1:
 				err = errors.New(string(responseJSON))
-				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode, &resp.Status,
-					&dataFlow.url, &err, &dataFlow.json)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
+					&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 			}
 
 		}(dataFlow)
@@ -256,7 +261,7 @@ func callAsyncApi(uuid *string) error {
 	var (
 		defaultStatus *string
 		defaultCode   *int
-		errorsInc     []string
+		errlist       []string
 		data          *jsonStruct
 		err           error
 		allFilled     bool
@@ -265,9 +270,6 @@ func callAsyncApi(uuid *string) error {
 		reqAPI        *http.Request
 		result        []any
 	)
-
-	tBegin := time.Now()
-	fmt.Printf("start: %v\n", tBegin)
 
 	data, err = openJSON(filepath.Join(*uuid, "data.json"))
 	if err != nil {
@@ -280,15 +282,15 @@ func callAsyncApi(uuid *string) error {
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
 
-	//resultLength := len(requests)
-	resultLength := 1 //TEST
-	connPool := 50    //default
+	resultLength := len(requests)
+	//resultLength := 1 //TEST
+	connPool := 50 //default
 	if data.ConnPool != 0 {
 		connPool = data.ConnPool
 	}
 
-	if len(data.Errors) > 0 {
-		errorsInc = data.Errors
+	if len(data.Errlist) > 0 {
+		errlist = data.Errlist
 	}
 
 	//channels
@@ -306,28 +308,27 @@ func callAsyncApi(uuid *string) error {
 	password := data.Password
 	headers := data.Headers
 
-	v := requests[0] //TEST
-
+	//v := requests[0] //TEST
 	go httpREQUEST()
 
 labelMain:
 	for {
 		allFilled = true
 	labelSlice:
-		//for i, v := range result {
-		for k := 0; k < resultLength; k++ { //TEST
+		for k, v := range requests {
+			//for k := 0; k < resultLength; k++ { //TEST
 			if result[k] == nil {
 				allFilled = false
 
 				reqJSON, err = json.Marshal(&v)
 				if err != nil {
-					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v)
+					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v, &errlist)
 					continue
 				}
 
 				reqAPI, err = http.NewRequest("POST", url, bytes.NewBuffer(reqJSON))
 				if err != nil {
-					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, v)
+					result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, v, &errlist)
 					continue
 				}
 				for key, value := range headers {
@@ -341,7 +342,7 @@ labelMain:
 				newDataFlow.result = result
 				newDataFlow.url = url
 				newDataFlow.json = v
-				newDataFlow.errors = errorsInc
+				newDataFlow.errlist = errlist
 
 				wg.Add(1)
 				requestChan <- newDataFlow
@@ -368,7 +369,6 @@ labelMain:
 				}
 			default:
 			}
-
 		}
 		wg.Wait()
 		if allFilled {
@@ -386,20 +386,36 @@ labelMain:
 	var prettyJSON bytes.Buffer
 	err = json.Indent(&prettyJSON, responseJSON, "", "\t")
 
-	err = os.WriteFile(filepath.Join(*uuid, "result.json"), prettyJSON.Bytes(), os.ModePerm)
+	err = os.WriteFile(filepath.Join(absPath, *uuid, "result.json"), prettyJSON.Bytes(), os.ModePerm)
 	if err != nil {
 		loggErrorMessage(err)
 	}
-
-	tEnd := time.Now()
-	fmt.Printf("End: %v\nDuration: %v", tEnd, tEnd.Sub(tBegin))
-
 	return nil
+}
+
+func clearLogs() {
+	if err := os.Truncate("error.log", 0); err != nil {
+		systemError(err)
+	}
+}
+
+func clearTempFiles(uuid *string) {
+	err := os.RemoveAll(filepath.Join(absPath, *uuid))
+	if err != nil {
+		loggErrorMessage(errWrap(&err, "clearTempFiles", "err := os.RemoveAll(*uuid)"))
+	}
 }
 
 func main() {
 	var err error
-	logFile, err = openFile("error.log")
+
+	//exePath, errExe := os.Executable()
+	//if errExe != nil {
+	//	log.Fatal(err)
+	//}
+	//absPath = filepath.Dir(exePath)
+
+	logFile, err = openFile("errors.log")
 	if err != nil {
 		systemError(errWrap(&err, "main", "logFile, err = openFile(\"error.log\")"))
 	}
@@ -416,9 +432,8 @@ func main() {
 	switch len(args) {
 	case 2:
 		arg := args[1]
-
 		if arg == "-clearLogs" {
-			//TODO: Clear log with parameter
+			clearLogs()
 		} else {
 			err = callAsyncApi(&arg)
 			if err != nil {
@@ -427,8 +442,10 @@ func main() {
 			}
 		}
 	case 3:
-		//TODO: Clear log with parameter - folder
+		if args[1] == "-clear" {
+			clearTempFiles(&(args[2]))
+		}
 	default:
-		os.Exit(0)
 	}
+	os.Exit(0)
 }
