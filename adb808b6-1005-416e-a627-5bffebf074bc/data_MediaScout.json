@@ -2,9 +2,9 @@
   "base_url": "demo.mediascout.ru",
   "url": "/webapi/clients/getclients",
   "ssl": "true",
-  "login": "",
-  "password": "",
-  "Authorization" : "Authorization",
+  "login": "vitaly.nikulin@okkam.ru",
+  "password": "vukyz9O79?",
+  "Authorization" : "",
   "ord": "ms",
   "connPool" : 50,
   "errlist": [
