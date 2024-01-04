@@ -375,7 +375,6 @@ labelMain:
 						result[k] = getErrorStructure(&k, defaultCode, defaultStatus, &url, &err, &v, &errlist)
 						continue
 					}
-
 					q := reqAPI.URL.Query()
 					for parN, parV := range v.(map[string]interface{}) {
 						q.Add(parN, parV.(string))
