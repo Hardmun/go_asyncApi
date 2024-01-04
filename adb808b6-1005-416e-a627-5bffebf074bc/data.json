@@ -1,6 +1,6 @@
 {
   "base_url": "ord-prestable.yandex.net",
-  "url": "/api/v3/organization",
+  "url": "/api/v3/contract",
   "ssl": "true",
   "ord": "Yandex",
   "errlist": [],
@@ -13,10 +13,7 @@
   "method": "get",
   "data": [
     {
-      "object_id": "17c1ff28-b752-4f1a-b70f-de48bc4edc21"
-    },
-    {
-      "object_id": "555a1dc7-db57-4166-be08-9ac6db5c4555"
+      "object_id": "815fc494-5f5b-11e8-80f5-005056b27e80"
     }
   ]
 }
