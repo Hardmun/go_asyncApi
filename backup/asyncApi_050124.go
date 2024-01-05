@@ -80,6 +80,24 @@ func (ms *anyResponse) isMScoutError() error {
 }
 
 func (ms *anyResponse) isYandexError(statusCode *int) error {
+	var errString string
+	//if errMsg, ok := (*ms)["error_message"].([]interface{}); *statusCode == 200 && ok {
+	//	for _, errArray := range errMsg {
+	//		if annotation, ok := errArray.(map[string]interface{})["annotation"].(string); ok {
+	//			errString += annotation
+	//		}
+	//		if path, ok := errArray.(map[string]interface{})["paths"].([]interface{}); ok {
+	//			for _, v := range path {
+	//				if p, ok := v.(string); ok {
+	//					errString += "\n(path: " + p + ")"
+	//				}
+	//			}
+	//		}
+	//
+	//	}
+	//	return errors.New(errString)
+	//}
+
 	if _, ok := (*ms)["detail"]; !ok {
 		return nil
 	}
@@ -91,7 +109,6 @@ func (ms *anyResponse) isYandexError(statusCode *int) error {
 		return errors.New("Result is empty")
 	}
 
-	var errString string
 	switch (*ms)["detail"].(type) {
 	case string:
 		errString = (*ms)["detail"].(string)
@@ -126,6 +143,22 @@ func (ms *anyResponse) isYandexOK(index *int, resp *http.Response) (interface{},
 				} else {
 					data.(map[string]any)["error"] = v
 				}
+				//if errMsg, ok := (*ms)["error_message"].([]interface{}); *statusCode == 200 && ok {
+				//	for _, errArray := range errMsg {
+				//		if annotation, ok := errArray.(map[string]interface{})["annotation"].(string); ok {
+				//			errString += annotation
+				//		}
+				//		if path, ok := errArray.(map[string]interface{})["paths"].([]interface{}); ok {
+				//			for _, v := range path {
+				//				if p, ok := v.(string); ok {
+				//					errString += "\n(path: " + p + ")"
+				//				}
+				//			}
+				//		}
+				//
+				//	}
+				//	return errors.New(errString)
+				//}
 			} else if k != "data" {
 				data.(map[string]any)[k] = v
 			}
