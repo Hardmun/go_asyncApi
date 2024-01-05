@@ -29,7 +29,7 @@ var (
 type requestStruct struct {
 	index      int
 	httREQUEST *http.Request
-	method     string
+	origResp   bool
 	errlist    []string
 	result     []any
 	url        string
@@ -40,6 +40,7 @@ type jsonStruct struct {
 	BaseURL  string            `json:"base_Url"`
 	Url      string            `json:"url"`
 	Ssl      any               `json:"ssl"`
+	OrigResp any               `json:"origResp"`
 	Login    string            `json:"login"`
 	Password string            `json:"password"`
 	Method   string            `json:"method"`
@@ -293,13 +294,14 @@ func httpREQUEST() {
 					return
 				}
 
-				if err = responseStruct.isMScoutError(); err != nil {
+				if err = responseStruct.isMScoutError(); err != nil && !dataFlow.origResp {
 					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
-				} else if err = responseStruct.isYandexError(&resp.StatusCode); err != nil {
+				} else if err = responseStruct.isYandexError(&resp.StatusCode); err != nil && !dataFlow.origResp {
 					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
-				} else if yandexResp, isNil := responseStruct.isYandexOK(&dataFlow.index); isNil == nil {
+				} else if yandexResp, isNil := responseStruct.isYandexOK(&dataFlow.index); isNil == nil &&
+					!dataFlow.origResp {
 					dataFlow.result[dataFlow.index] = yandexResp
 				} else {
 					responseStruct["index"] = dataFlow.index
@@ -309,6 +311,12 @@ func httpREQUEST() {
 			}
 
 			switch ln := len(responseStructSlice); {
+			case dataFlow.origResp:
+				anyResp := anyResponse{
+					"data":  responseStructSlice,
+					"index": dataFlow.index,
+				}
+				dataFlow.result[dataFlow.index] = anyResp
 			case ln == 0:
 				err = errors.New("Result is empty")
 				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
@@ -321,7 +329,6 @@ func httpREQUEST() {
 				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 					&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 			}
-
 		}(dataFlow)
 	}
 }
@@ -364,6 +371,11 @@ func callAsyncApi(uuid *string) error {
 	if len(data.Errlist) > 0 {
 		errlist = data.Errlist
 	}
+	origResp := false
+	if data.OrigResp == true || data.OrigResp == "true" {
+		origResp = true
+	}
+
 	defaultCode := new(int)
 	defaultStatus := new(string)
 
@@ -439,7 +451,7 @@ labelMain:
 				newDataFlow := requestPOOL.Get().(*requestStruct)
 				newDataFlow.index = k
 				newDataFlow.httREQUEST = reqAPI
-				newDataFlow.method = method
+				newDataFlow.origResp = origResp
 				newDataFlow.result = result
 				newDataFlow.url = url
 				newDataFlow.json = v
@@ -509,11 +521,11 @@ func clearTempFiles(uuid *string) {
 func main() {
 	var err error
 
-	exePath, errExe := os.Executable()
-	if errExe != nil {
-		log.Fatal(err)
-	}
-	absPath = filepath.Dir(exePath)
+	//exePath, errExe := os.Executable()
+	//if errExe != nil {
+	//	log.Fatal(err)
+	//}
+	//absPath = filepath.Dir(exePath)
 
 	logFile, err = openFile("errors.log")
 	if err != nil {
