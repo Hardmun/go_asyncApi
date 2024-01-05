@@ -79,8 +79,8 @@ func (ms *anyResponse) isMScoutError() error {
 }
 
 func (ms *anyResponse) isYandexError(statusCode *int) error {
+	var errString string
 	if errMsg, ok := (*ms)["error_message"].([]interface{}); *statusCode == 200 && ok {
-		var errString string
 		for _, errArray := range errMsg {
 			if annotation, ok := errArray.(map[string]interface{})["annotation"].(string); ok {
 				errString += annotation
@@ -108,7 +108,22 @@ func (ms *anyResponse) isYandexError(statusCode *int) error {
 		return errors.New("Result is empty")
 	}
 
-	return errors.New((*ms)["detail"].(string))
+	switch (*ms)["detail"].(type) {
+	case string:
+		errString = (*ms)["detail"].(string)
+	case []interface{}:
+		if e, ok := (*ms)["detail"].([]interface{})[0].(map[string]interface{}); ok {
+			if msg, okMsg := e["msg"].(string); okMsg {
+				errString += msg
+			}
+			if msg, okMsg := e["type"].(string); okMsg {
+				errString += "\n" + msg
+			}
+		}
+	default:
+		errString = "HTTP response type is unknown."
+	}
+	return errors.New(errString)
 }
 
 func (ms *anyResponse) isYandexOK(index *int) (interface{}, error) {
@@ -318,6 +333,7 @@ func callAsyncApi(uuid *string) error {
 		err          error
 		basicAuth    bool
 		allFilled    bool
+		requests     []any
 		reqJSON      []byte
 		responseJSON []byte
 		reqAPI       *http.Request
@@ -329,8 +345,12 @@ func callAsyncApi(uuid *string) error {
 		return errWrap(&err, "callAsyncApi", "data, err := openJSON(filepath.Join(*uuid, \"data.json\"))")
 	}
 
-	requests, ok := data.Data.([]interface{})
-	if !ok {
+	switch data.Data.(type) {
+	case map[string]interface{}:
+		requests = []interface{}{data.Data}
+	case []interface{}:
+		requests = data.Data.([]interface{})
+	default:
 		return fmt.Errorf("Cannot read request from JSON \n func: %v desc: %v",
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
 	}
@@ -489,11 +509,11 @@ func clearTempFiles(uuid *string) {
 func main() {
 	var err error
 
-	//exePath, errExe := os.Executable()
-	//if errExe != nil {
-	//	log.Fatal(err)
-	//}
-	//absPath = filepath.Dir(exePath)
+	exePath, errExe := os.Executable()
+	if errExe != nil {
+		log.Fatal(err)
+	}
+	absPath = filepath.Dir(exePath)
 
 	logFile, err = openFile("errors.log")
 	if err != nil {
