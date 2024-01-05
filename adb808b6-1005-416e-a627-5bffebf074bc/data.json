@@ -2,7 +2,7 @@
   "base_url": "ord-prestable.yandex.net",
   "url": "/api/v3/contract",
   "ssl": "true",
-  "ord": "Yandex",
+  "ord": "ms",
   "errlist": [],
   "login": "",
   "password": "",
@@ -10,10 +10,18 @@
     "Authorization": "Bearer y0_AgAAAABvgzYeAAhgQAAAAADtS77vnBmwazdyTa2OnV05XvrulmIGkUw",
     "Content-type": "application/json"
   },
-  "method": "get",
-  "data": [
-    {
-      "object_id": "815fc494-5f5b-11e8-80f5-005056b27e80"
-    }
-  ]
+  "method": "POST",
+  "data": {
+    "number": "Adv-170",
+    "date": "2014-11-12",
+    "type": "contract",
+    "actionType": "other",
+    "subjectType": "other",
+    "isRegReport": "false",
+    "isVat": "true",
+    "agentActingForPublisher": "true",
+    "clientId": "593cd9f8-c0a8-11e4-9431-0050568a493a",
+    "id": "815fc494-5f5b-11e8-80f5-005056b27e80",
+    "contractorId": "2194113b-e6fe-11e3-9413-0050568a5ddb"
+  }
 }
