@@ -116,6 +116,9 @@ func (ms *anyResponse) isYandexOK(index *int, resp *http.Response) (interface{},
 		for k, v := range *ms {
 			if k == "error_message" {
 				if errMsg, okMsg := v.([]interface{})[0].(map[string]interface{})["annotation"].(string); okMsg {
+					if m, err := json.Marshal(v); err == nil {
+						v = string(m)
+					}
 					data.(map[string]any)["error"] = errorDetails{
 						Status:       resp.StatusCode,
 						StatusString: resp.Status,
@@ -516,11 +519,11 @@ func clearTempFiles(uuid *string) {
 func main() {
 	var err error
 
-	//exePath, errExe := os.Executable()
-	//if errExe != nil {
-	//	log.Fatal(err)
-	//}
-	//absPath = filepath.Dir(exePath)
+	exePath, errExe := os.Executable()
+	if errExe != nil {
+		log.Fatal(err)
+	}
+	absPath = filepath.Dir(exePath)
 
 	logFile, err = openFile("errors.log")
 	if err != nil {
