@@ -80,24 +80,6 @@ func (ms *anyResponse) isMScoutError() error {
 }
 
 func (ms *anyResponse) isYandexError(statusCode *int) error {
-	var errString string
-	if errMsg, ok := (*ms)["error_message"].([]interface{}); *statusCode == 200 && ok {
-		for _, errArray := range errMsg {
-			if annotation, ok := errArray.(map[string]interface{})["annotation"].(string); ok {
-				errString += annotation
-			}
-			if path, ok := errArray.(map[string]interface{})["paths"].([]interface{}); ok {
-				for _, v := range path {
-					if p, ok := v.(string); ok {
-						errString += "\n(path: " + p + ")"
-					}
-				}
-			}
-
-		}
-		return errors.New(errString)
-	}
-
 	if _, ok := (*ms)["detail"]; !ok {
 		return nil
 	}
@@ -109,6 +91,7 @@ func (ms *anyResponse) isYandexError(statusCode *int) error {
 		return errors.New("Result is empty")
 	}
 
+	var errString string
 	switch (*ms)["detail"].(type) {
 	case string:
 		errString = (*ms)["detail"].(string)
@@ -127,11 +110,23 @@ func (ms *anyResponse) isYandexError(statusCode *int) error {
 	return errors.New(errString)
 }
 
-func (ms *anyResponse) isYandexOK(index *int) (interface{}, error) {
+func (ms *anyResponse) isYandexOK(index *int, resp *http.Response) (interface{}, error) {
 	if data, ok := (*ms)["data"]; ok {
 		data.(map[string]any)["index"] = index
 		for k, v := range *ms {
-			if k != "data" {
+			if k == "error_message" {
+				if errMsg, okMsg := v.([]interface{})[0].(map[string]interface{})["annotation"].(string); okMsg {
+					data.(map[string]any)["error"] = errorDetails{
+						Status:       resp.StatusCode,
+						StatusString: resp.Status,
+						Reason:       errMsg,
+						Url:          resp.Request.URL.Path,
+						Json:         v,
+					}
+				} else {
+					data.(map[string]any)["error"] = v
+				}
+			} else if k != "data" {
 				data.(map[string]any)[k] = v
 			}
 		}
@@ -300,7 +295,7 @@ func httpREQUEST() {
 				} else if err = responseStruct.isYandexError(&resp.StatusCode); err != nil && !dataFlow.origResp {
 					dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 						&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
-				} else if yandexResp, isNil := responseStruct.isYandexOK(&dataFlow.index); isNil == nil &&
+				} else if yandexResp, isNil := responseStruct.isYandexOK(&dataFlow.index, resp); isNil == nil &&
 					!dataFlow.origResp {
 					dataFlow.result[dataFlow.index] = yandexResp
 				} else {
