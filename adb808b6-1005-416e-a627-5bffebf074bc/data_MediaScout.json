@@ -6,6 +6,7 @@
   "password": "vukyz9O79?",
   "Authorization" : "",
   "ord": "ms",
+  "origResp": false,
   "connPool" : 50,
   "errlist": [
     "400"

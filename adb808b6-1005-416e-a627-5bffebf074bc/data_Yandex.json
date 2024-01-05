@@ -3,6 +3,7 @@
   "url": "/api/v3/organization",
   "ssl": "true",
   "ord": "Yandex",
+  "origResp": false,
   "errlist": [],
   "login": "",
   "password": "",
