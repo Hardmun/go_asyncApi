@@ -24,6 +24,7 @@ var (
 	doneRequest chan struct{} //signal to reduce threads
 	requestPOOL = sync.Pool{New: func() interface{} { return new(requestStruct) }}
 	absPath     string
+	mtx         sync.RWMutex
 )
 
 type requestStruct struct {
@@ -158,6 +159,12 @@ func getErrorStructure(index, status *int, statusString, url *string, err *error
 
 	for _, e := range *errlist {
 		if (strings.Contains(*statusString, e) || strings.Contains((*err).Error(), e)) && e != "" {
+			mtx.RLock()
+			chCap := cap(semaphore)
+			mtx.RUnlock()
+			if chCap == 1 {
+				break
+			}
 			loggErrorMessage(errors.New("Activating error:\n" + *statusString + "\n" + (*err).Error()))
 			select {
 			case doneRequest <- struct{}{}:
