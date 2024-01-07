@@ -45,7 +45,6 @@ type jsonStruct struct {
 	Password string            `json:"password"`
 	Method   string            `json:"method"`
 	ConnPool int               `json:"connPool"`
-	Ord      string            `json:"ord"`
 	Errlist  []string          `json:"errlist"`
 	Headers  map[string]string `json:"headers"`
 	Data     any               `json:"data"`
@@ -425,7 +424,9 @@ labelMain:
 					}
 					q := reqAPI.URL.Query()
 					for parN, parV := range v.(map[string]interface{}) {
-						q.Add(parN, parV.(string))
+						if gV, ok := parV.(string); ok {
+							q.Add(parN, gV)
+						}
 					}
 					reqAPI.URL.RawQuery = q.Encode()
 

@@ -1,8 +1,8 @@
 {
   "base_url": "ord-prestable.yandex.net",
-  "url": "/api/v3/contract",
+  "url": "/api/v3/invoice",
   "ssl": "true",
-  "ord": "Yandex",
+  "connPool": 50,
   "origResp": false,
   "errlist": [],
   "login": "",
@@ -11,10 +11,24 @@
     "Authorization": "Bearer y0_AgAAAABvgzYeAAhgQAAAAADtS77vnBmwazdyTa2OnV05XvrulmIGkUw",
     "Content-type": "application/json"
   },
-  "method": "get",
-  "data": [
-    {
-      "object_id": "815fc420-5f5b-11e8-80f5-005056b27e80"
-    }
-  ]
+  "method": "POST",
+  "data": {
+    "id": "f010905b-9b41-11ee-8165-005056b27e80",
+    "contractId": "23df5577-d15f-11e5-816e-000c2953b801",
+    "contractorRole": "ra",
+    "clientRole": "ra",
+    "date": "2023-11-30",
+    "startDate": "2023-11-01",
+    "endDate": "2023-11-30",
+    "amount": "5268983",
+    "isVat": true,
+    "number": "УТ30-11/309",
+    "items": [
+      {
+        "contractId": "f470abef-5507-11ed-b75a-005056995bef",
+        "amount": "5268983",
+        "isVat": true
+      }
+    ]
+  }
 }

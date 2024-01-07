@@ -2,7 +2,6 @@
   "base_url": "ord-prestable.yandex.net",
   "url": "/api/v3/organization",
   "ssl": "true",
-  "ord": "Yandex",
   "origResp": false,
   "errlist": [],
   "login": "",
