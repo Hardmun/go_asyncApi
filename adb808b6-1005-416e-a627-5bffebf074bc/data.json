@@ -1,6 +1,6 @@
 {
   "base_url": "demo.mediascout.ru",
-  "url": "/webapi/invoices/getinvoices",
+  "url": "/webapi/invoices/overwriteinvoice",
   "ssl": "true",
   "connPool": 50,
   "origResp": false,
@@ -14,9 +14,16 @@
     "Content-type": "application/json"
   },
   "method": "POST",
-  "data":
-  {
-    "DateStart": "2023-11-01",
-    "DateEnd": "2023-11-30"
-  }
+  "data": [
+    {
+      "Id": "INCTWrsUAsr0yHrmf3UMcCfg",
+      "InitialContractsData": [
+        {
+          "InitialContractId": "CTU4ToRYNWQUSlJXHN2ZfZxQ",
+          "Amount": "172500",
+          "VatIncluded": true
+        }
+      ]
+    }
+  ]
 }
