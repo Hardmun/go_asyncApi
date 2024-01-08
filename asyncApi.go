@@ -316,11 +316,7 @@ func httpREQUEST() {
 
 			switch ln := len(responseStructSlice); {
 			case dataFlow.origResp:
-				anyResp := anyResponse{
-					"data":  responseStructSlice,
-					"index": dataFlow.index,
-				}
-				dataFlow.result[dataFlow.index] = anyResp
+				dataFlow.result[dataFlow.index] = responseStructSlice
 			case ln == 0:
 				err = errors.New("Result is empty")
 				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
@@ -329,9 +325,11 @@ func httpREQUEST() {
 				responseStructSlice[0]["index"] = dataFlow.index
 				dataFlow.result[dataFlow.index] = responseStructSlice[0]
 			case ln > 1:
-				err = errors.New(string(responseJSON))
-				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
-					&resp.Status, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
+				anyResp := anyResponse{
+					"data":  responseStructSlice,
+					"index": dataFlow.index,
+				}
+				dataFlow.result[dataFlow.index] = anyResp
 			}
 		}(dataFlow)
 	}
@@ -361,6 +359,12 @@ func callAsyncApi(uuid *string) error {
 		requests = []interface{}{data.Data}
 	case []interface{}:
 		requests = data.Data.([]interface{})
+	case string:
+		if invalidStr, ok := data.Data.(string); ok && invalidStr == "{}" {
+			requests = []any{struct{}{}}
+		} else {
+			requests = nil
+		}
 	default:
 		return fmt.Errorf("Cannot read request from JSON \n func: %v desc: %v",
 			"callAsyncApi", "requests, ok := data.Data.([]interface{})")
@@ -498,15 +502,25 @@ labelMain:
 	close(doneRequest)
 	close(semaphore)
 
-	resStruct := resultStruct{Data: result}
-	responseJSON, err = json.Marshal(&resStruct)
+	var dataToMarshal interface{}
+	if origResp {
+		dataToMarshal = &result[0]
+	} else {
+		resStruct := resultStruct{Data: result}
+		dataToMarshal = resStruct
+	}
+	responseJSON, err = json.Marshal(dataToMarshal)
+	if err != nil {
+		loggErrorMessage(errWrap(&err, "callAsyncApi", "responseJSON, err = json.Marshal(dataToMarshal)"))
+	}
 
 	var prettyJSON bytes.Buffer
 	err = json.Indent(&prettyJSON, responseJSON, "", "\t")
 
 	err = os.WriteFile(filepath.Join(absPath, *uuid, "result.json"), prettyJSON.Bytes(), os.ModePerm)
 	if err != nil {
-		loggErrorMessage(err)
+		loggErrorMessage(errWrap(&err, "callAsyncApi",
+			"err = os.WriteFile(filepath.Join(absPath, *uuid, \"result.json\"), prettyJSON.Bytes(), os.ModePerm)"))
 	}
 	return nil
 }

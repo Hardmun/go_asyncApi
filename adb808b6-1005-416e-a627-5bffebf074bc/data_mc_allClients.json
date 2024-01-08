@@ -1,11 +1,12 @@
 {
   "base_url": "demo.mediascout.ru",
-  "url": "/webapi/invoices/getinvoices",
+  "url": "/webapi/clients/getclients",
   "ssl": "true",
   "connPool": 50,
-  "origResp": false,
+  "origResp": true,
   "errlist": [
     "400",
+    "401",
     "502"
   ],
   "login": "vitaly.nikulin@okkam.ru",
@@ -14,9 +15,5 @@
     "Content-type": "application/json"
   },
   "method": "POST",
-  "data":
-  {
-    "DateStart": "2023-11-01",
-    "DateEnd": "2023-11-30"
-  }
+  "data": {}
 }
