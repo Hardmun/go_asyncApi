@@ -7,7 +7,7 @@
   "login": "",
   "password": "",
   "headers": {
-    "Authorization": "Bearer y0_AgAAAABvgzYeAAhgQAAAAADtS77vnBmwazdyTa2OnV05XvrulmIGkUw",
+    "Authorization": "Bearer ",
     "Content-type": "application/json"
   },
   "method": "get",
