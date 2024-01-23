@@ -548,7 +548,7 @@ func main() {
 
 	exePath, errExe := os.Executable()
 	if errExe != nil {
-		log.Fatal(err)
+		log.Fatal(errExe)
 	}
 	absPath = filepath.Dir(exePath)
 
