@@ -170,9 +170,10 @@ func getErrorStructure(index, status *int, statusString, url *string, err *error
 			case doneRequest <- struct{}{}:
 			default:
 			}
-			return nil
+			return newError
 		}
 	}
+	//TODO: changed from return to return newError 02.05.2023. Need to check.
 	return newError
 }
 
