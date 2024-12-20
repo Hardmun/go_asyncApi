@@ -210,8 +210,8 @@ func httpRequest() {
 					&defaultStrStatus, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 				return
 			} else if len(responseJSON) == 0 {
-				err = errors.New("Body response is empty")
-				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &defaultStatus,
+				err = fmt.Errorf("%s", resp.Status)
+				dataFlow.result[dataFlow.index] = getErrorStructure(&dataFlow.index, &resp.StatusCode,
 					&defaultStrStatus, &dataFlow.url, &err, &dataFlow.json, &dataFlow.errlist)
 				return
 			}
