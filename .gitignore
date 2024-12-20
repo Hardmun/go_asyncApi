@@ -1,5 +1,4 @@
 /.idea
-/data
 /logs
 /cmd/app/logs
 /cmd/app/data
