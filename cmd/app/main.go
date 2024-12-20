@@ -1,6 +1,9 @@
 package main
 
 import (
+	"asyncApi/internal/api/common"
+	"asyncApi/internal/api/ord"
+	"asyncApi/internal/input"
 	"asyncApi/internal/logs"
 	"asyncApi/utils"
 	"log"
@@ -8,6 +11,8 @@ import (
 )
 
 func main() {
+	utils.SetServiceMode(true)
+
 	errLog, err := logs.GetErrorLog()
 	if err != nil {
 		log.Fatal(err)
@@ -22,19 +27,31 @@ func main() {
 		if arg == "-clearLogs" {
 			errLog.ClearLogs()
 		} else {
-			//err = callAsyncApi(&arg)
-			//if err != nil {
-			//	loggErrorMessage(errWrap(&err, "main", "err = callAsyncApi(&arg)"))
-			//	fmt.Println(err.Error())
-			//}
+			var iParam input.InpParams
+			iParam, err = input.GetInputParams(arg)
+			if err != nil {
+				errLog.Fatal(err)
+			}
+
+			if iParam.IsORD {
+				err = ord.CallOrdApi(iParam)
+				if err != nil {
+					errLog.Fatal(err)
+				}
+				return
+			}
+
+			err = common.CallAsyncApi(iParam)
+			if err != nil {
+				errLog.Fatal(err)
+			}
 		}
 	case 3:
 		if args[1] == "-clear" {
 			if err = utils.ClearTempFiles(args[2]); err != nil {
-				errLog.Write(err)
+				errLog.Fatal(err)
 			}
 		}
 	default:
 	}
-	os.Exit(0)
 }

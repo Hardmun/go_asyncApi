@@ -38,7 +38,7 @@ func (l *LogStruct) Fatal(errMsg ...any) {
 
 func (l *LogStruct) ClearLogs() {
 	if err := os.Truncate(l.logFile.Name(), 0); err != nil {
-		l.Write(err)
+		l.Fatal(err)
 	}
 }
 
@@ -56,9 +56,6 @@ func newLog(logType string) (Logger, error) {
 	}
 
 	filename := "error.log"
-	if logType == "INFO" {
-		filename = "info.log"
-	}
 
 	var lFile *os.File
 	lFile, err = os.OpenFile(filepath.Join(logDir, filename), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)

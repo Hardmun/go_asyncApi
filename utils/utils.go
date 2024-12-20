@@ -8,9 +8,13 @@ import (
 )
 
 var (
-	absPathOnce sync.Once
-	AbsPath     string
+	absPathOnce  sync.Once
+	AbsPath      string
+	dataPathOnce sync.Once
+	DataPath     string
 )
+
+var serviceMode bool
 
 func DirPath(path ...string) (string, error) {
 	pathDir := filepath.Join(path...)
@@ -25,19 +29,48 @@ func DirPath(path ...string) (string, error) {
 func GetAbsPath() string {
 	absPathOnce.Do(func() {
 		var err error
-		AbsPath, err = filepath.Abs("./")
-		if err != nil {
-			log.Fatal(err)
+		if serviceMode {
+			var exePath string
+			exePath, err = os.Executable()
+			if err != nil {
+				log.Fatal(err)
+			}
+			AbsPath = filepath.Dir(exePath)
+		} else {
+			AbsPath, err = filepath.Abs("./")
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
+
 	})
 	return AbsPath
 }
 
+func GetDataPath() string {
+	dataPathOnce.Do(func() {
+		var err error
+		DataPath, err = DirPath(GetAbsPath(), "data")
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+	return DataPath
+}
+
 func ClearTempFiles(uuid string) error {
-	err := os.RemoveAll(filepath.Join(GetAbsPath(), "data", uuid))
+	dp := GetDataPath()
+
+	err := os.RemoveAll(filepath.Join(dp, uuid))
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// - true: file runs under the service
+// - false: file runs under the user
+func SetServiceMode(mode bool) {
+	serviceMode = mode
 }
