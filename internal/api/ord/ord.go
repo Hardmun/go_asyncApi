@@ -261,7 +261,7 @@ func httpRequest() {
 	}
 }
 
-func CallOrdApi(data input.InpParams) error {
+func CallOrdApi(data *input.InpParams) error {
 	var (
 		errlist      []string
 		err          error
@@ -274,20 +274,20 @@ func CallOrdApi(data input.InpParams) error {
 		result       []any
 	)
 
-	switch data.Data.(type) {
+	switch data.Body.(type) {
 	case map[string]interface{}:
-		requests = []interface{}{data.Data}
+		requests = []interface{}{data.Body}
 	case []interface{}:
-		requests = data.Data.([]interface{})
+		requests = data.Body.([]interface{})
 	case string:
-		if invalidStr, ok := data.Data.(string); ok && invalidStr == "{}" {
+		if invalidStr, ok := data.Body.(string); ok && invalidStr == "{}" {
 			requests = []any{struct{}{}}
 		} else {
 			requests = nil
 		}
 	default:
 		return fmt.Errorf("Cannot read request from JSON \n func: %v desc: %v",
-			"CallOrdApi", "switch data.Data.(type)")
+			"CallOrdApi", "switch data.Body.(type)")
 	}
 
 	resultLength := len(requests)

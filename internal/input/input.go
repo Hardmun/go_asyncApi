@@ -21,11 +21,12 @@ type InpParams struct {
 	ConnPool  int               `json:"connPool"`
 	Errlist   []string          `json:"errlist"`
 	Headers   map[string]string `json:"headers"`
-	Data      any               `json:"data"`
+	Params    map[string]string `json:"params"`
+	Body      any               `json:"body"`
 	Directory string
 }
 
-func GetInputParams(uuidDir string) (InpParams, error) {
+func GetInputParams(uuidDir string) (*InpParams, error) {
 	var (
 		jsonFile *os.File
 		err      error
@@ -36,30 +37,30 @@ func GetInputParams(uuidDir string) (InpParams, error) {
 
 	jsonFile, err = os.Open(filepath.Join(workDir, "data.json"))
 	if err != nil {
-		return InpParams{}, err
+		return nil, err
 	}
 
 	byteJSON, err = io.ReadAll(jsonFile)
 	if err != nil {
-		return InpParams{}, err
+		return nil, err
 	}
 
 	err = jsonFile.Close()
 	if err != nil {
-		return InpParams{}, err
+		return nil, err
 	}
 
 	if !json.Valid(byteJSON) {
-		return InpParams{}, fmt.Errorf("invalid JSON string: %v", string(byteJSON))
+		return nil, fmt.Errorf("invalid JSON string: %v", string(byteJSON))
 	}
 
 	var data InpParams
 	err = json.Unmarshal(byteJSON, &data)
 	if err != nil {
-		return InpParams{}, err
+		return nil, err
 	}
 
 	data.Directory = workDir
 
-	return data, nil
+	return &data, nil
 }

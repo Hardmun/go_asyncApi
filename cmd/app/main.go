@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	utils.SetServiceMode(true)
+	utils.SetServiceMode(false)
 
 	errLog, err := logs.GetErrorLog()
 	if err != nil {
@@ -27,7 +27,7 @@ func main() {
 		if arg == "-clearLogs" {
 			errLog.ClearLogs()
 		} else {
-			var iParam input.InpParams
+			var iParam *input.InpParams
 			iParam, err = input.GetInputParams(arg)
 			if err != nil {
 				errLog.Fatal(err)
