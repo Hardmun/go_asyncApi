@@ -58,12 +58,27 @@ func GetDataPath() string {
 	return DataPath
 }
 
-func ClearTempFiles(uuid string) error {
+func ClearTempFiles(dr string) error {
 	dp := GetDataPath()
 
-	err := os.RemoveAll(filepath.Join(dp, uuid))
-	if err != nil {
-		return err
+	if dr == "" {
+		items, err := os.ReadDir(dp)
+		if err != nil {
+			return err
+		}
+
+		for _, itm := range items {
+			fullPath := filepath.Join(dp, itm.Name())
+			err = os.RemoveAll(fullPath)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		err := os.RemoveAll(filepath.Join(dp, dr))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

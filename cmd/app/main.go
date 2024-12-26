@@ -26,6 +26,8 @@ func main() {
 		arg := args[1]
 		if arg == "-clearLogs" {
 			errLog.ClearLogs()
+		} else if args[1] == "-clear" {
+			_ = utils.ClearTempFiles("")
 		} else {
 			var iParam *input.InpParams
 			iParam, err = input.GetInputParams(arg)
@@ -48,9 +50,7 @@ func main() {
 		}
 	case 3:
 		if args[1] == "-clear" {
-			if err = utils.ClearTempFiles(args[2]); err != nil {
-				errLog.Fatal(err)
-			}
+			_ = utils.ClearTempFiles(args[2])
 		}
 	default:
 	}
