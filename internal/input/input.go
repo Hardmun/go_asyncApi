@@ -12,8 +12,7 @@ import (
 type ModuleType int
 
 const (
-	Dflt ModuleType = iota
-	Ord
+	Ord ModuleType = iota + 1
 	Diadoc
 )
 
