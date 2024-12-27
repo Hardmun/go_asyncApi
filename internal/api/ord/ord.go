@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -398,7 +397,7 @@ labelMain:
 					if connPool == 1 {
 						break labelMain
 					} else {
-						connPool = int(math.Floor(float64(connPool / 2)))
+						connPool = connPool / 2
 						loggErrorMessage(errors.New("Reduced threads to:" + strconv.Itoa(connPool)))
 						semaphore = make(chan struct{}, connPool)
 						break labelSlice

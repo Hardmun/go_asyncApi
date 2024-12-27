@@ -9,11 +9,19 @@ import (
 	"path/filepath"
 )
 
+type ModuleType int
+
+const (
+	Dflt ModuleType = iota
+	Ord
+	Diadoc
+)
+
 type InpParams struct {
 	Server    string            `json:"server"`
 	EndPoint  string            `json:"endPoint"`
 	Ssl       bool              `json:"ssl"`
-	IsORD     bool              `json:"isORD"`
+	Module    ModuleType        `json:"module"`
 	OrigResp  bool              `json:"origResp"`
 	Login     string            `json:"login"`
 	Password  string            `json:"password"`
@@ -32,7 +40,6 @@ func GetInputParams(uuidDir string) (*InpParams, error) {
 		err      error
 		byteJSON []byte
 	)
-
 	workDir := filepath.Join(utils.GetDataPath(), uuidDir)
 
 	jsonFile, err = os.Open(filepath.Join(workDir, "data.json"))

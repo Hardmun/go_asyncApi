@@ -35,15 +35,14 @@ func main() {
 				errLog.Fatal(err)
 			}
 
-			if iParam.IsORD {
+			switch iParam.Module {
+			case input.Ord:
 				err = ord.CallOrdApi(iParam)
-				if err != nil {
-					errLog.Fatal(err)
-				}
-				return
+			case input.Diadoc:
+				err = common.CallAsyncApi(iParam)
+			default:
+				err = common.CallAsyncApi(iParam)
 			}
-
-			err = common.CallAsyncApi(iParam)
 			if err != nil {
 				errLog.Fatal(err)
 			}

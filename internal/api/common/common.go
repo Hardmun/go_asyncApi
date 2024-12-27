@@ -6,10 +6,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"io"
-
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -28,9 +29,10 @@ type requestParams struct {
 }
 
 type response struct {
+	Index      int    `json:"index"`
 	Status     string `json:"status"`
 	StatusCode int    `json:"statusCode"`
-	Result     any
+	Result     any    `json:"result"`
 }
 type singleRequest struct {
 	params requestParams
@@ -47,16 +49,18 @@ func internalErr(err error) response {
 }
 
 func doRequest(requestData *singleRequest) {
-	defer requestData.params.wg.Done()
+	defer func() {
+		<-semaphore
+		requestData.params.wg.Done()
+	}()
 
 	var (
 		apiResponse []byte
 		resp        *http.Response
 	)
-
-	apiParams := requestData.params
 	result := requestData.result
 
+	apiParams := requestData.params
 	request, err := http.NewRequest(apiParams.method, apiParams.url, bytes.NewBuffer(requestData.body))
 	if err != nil {
 		*result = internalErr(err)
@@ -87,15 +91,12 @@ func doRequest(requestData *singleRequest) {
 
 	apiResponse, err = io.ReadAll(resp.Body)
 	if err != nil {
-		*result = response{
-			Status:     resp.Status,
-			StatusCode: resp.StatusCode,
-			Result:     err.Error(),
-		}
+		*result = internalErr(err)
 	}
 
 	base64Data := base64.StdEncoding.EncodeToString(apiResponse)
 	*result = response{
+		Index:      requestData.result.Index,
 		Status:     resp.Status,
 		StatusCode: resp.StatusCode,
 		Result:     base64Data,
@@ -109,7 +110,9 @@ func CallAsyncApi(query *input.InpParams) error {
 		reqJSON   []byte
 		requests  []any
 		res       []response
+		respFile  []byte
 	)
+	errLog, _ := logs.GetErrorLog()
 
 	switch query.Body.(type) {
 	case map[string]any:
@@ -150,6 +153,7 @@ labelMain:
 		for k, v := range requests {
 			if res[k].StatusCode == 0 {
 				allFilled = false
+				res[k].Index = k
 
 				reqJSON, err = json.Marshal(&v)
 				if err != nil {
@@ -162,9 +166,9 @@ labelMain:
 					body:   reqJSON,
 					result: &res[k]}
 
+				semaphore <- struct{}{}
 				reqParams.wg.Add(1)
-				//TODO: make goroutine
-				go doRequest(&requestData)
+				doRequest(&requestData)
 			}
 		}
 
@@ -172,6 +176,20 @@ labelMain:
 		if allFilled {
 			break labelMain
 		}
+	}
+
+	respFile, err = json.Marshal(res)
+	if err != nil {
+		errLog.Fatal(err)
+	}
+	var prettyJSON bytes.Buffer
+	err = json.Indent(&prettyJSON, respFile, "", "\t")
+	if err != nil {
+		errLog.Fatal(err)
+	}
+	err = os.WriteFile(filepath.Join(query.Directory, "result.json"), prettyJSON.Bytes(), os.ModePerm)
+	if err != nil {
+		errLog.Fatal(err)
 	}
 
 	return nil
