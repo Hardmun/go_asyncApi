@@ -1,7 +1,7 @@
 package common
 
 import (
-	"asyncApi/internal/input"
+	in "asyncApi/internal/input"
 	"asyncApi/internal/logs"
 	"bytes"
 	"encoding/base64"
@@ -19,58 +19,78 @@ var (
 	semaphore chan struct{}
 )
 
-type requestParams struct {
-	wg      *sync.WaitGroup
-	method  string
-	url     string
-	headers map[string]string
-	params  map[string]string
-	errList []string
+type RequestParams struct {
+	Wg          *sync.WaitGroup
+	Method      string
+	Url         string
+	Headers     map[string]string
+	Params      map[string]string
+	ErrList     []string
+	DownloadDir string
 }
 
-type response struct {
+type Response struct {
 	Index      int    `json:"index"`
 	Status     string `json:"status"`
 	StatusCode int    `json:"statusCode"`
 	Result     any    `json:"result"`
 }
-type singleRequest struct {
-	params requestParams
-	body   []byte
-	result *response
+
+func (r *Response) Set(status string, statusCode int, result string) {
+	r.Status = status
+	r.StatusCode = statusCode
+	r.Result = result
 }
 
-func internalErr(err error) response {
-	return response{
-		Status:     "Internal Server Error",
-		StatusCode: 500,
-		Result:     err.Error(),
+func (r *Response) InternalErr(err error) {
+	r.Set("Internal Server Error", 500, err.Error())
+}
+
+type SingleRequest struct {
+	Params RequestParams
+	Body   []byte
+	Result *Response
+}
+
+func GetCommonParams(query *in.InpParamsStruct) RequestParams {
+	if _, ok := query.Headers["Authorization"]; !ok && query.Login != "" {
+		query.Headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(
+			fmt.Sprintf("%s:%s", query.Login, query.Password)))
 	}
+
+	p := "https://"
+	if !query.Ssl {
+		p = "http://"
+	}
+
+	reqParams := RequestParams{
+		Wg:          &sync.WaitGroup{},
+		Method:      strings.ToUpper(query.Method),
+		Url:         p + query.Server + query.EndPoint,
+		Headers:     query.Headers,
+		Params:      query.GetParams,
+		ErrList:     query.Errlist,
+		DownloadDir: query.DownloadDir,
+	}
+
+	return reqParams
 }
 
-func doRequest(requestData *singleRequest) {
-	defer func() {
-		<-semaphore
-		requestData.params.wg.Done()
-	}()
+func GetRequest(requestData *SingleRequest) (*http.Response, error) {
 
-	var (
-		apiResponse []byte
-		resp        *http.Response
-	)
-	result := requestData.result
+	var resp *http.Response
 
-	apiParams := requestData.params
-	request, err := http.NewRequest(apiParams.method, apiParams.url, bytes.NewBuffer(requestData.body))
+	apiParams := requestData.Params
+	request, err := http.NewRequest(apiParams.Method, apiParams.Url, bytes.NewBuffer(requestData.Body))
 	if err != nil {
-		*result = internalErr(err)
-		return
+		return nil, err
 	}
-	for key, value := range apiParams.headers {
+
+	for key, value := range apiParams.Headers {
 		request.Header.Set(key, value)
 	}
 	p := request.URL.Query()
-	for pName, pVal := range apiParams.params {
+	for pName, pVal := range apiParams.Params {
 		p.Add(pName, pVal)
 	}
 	request.URL.RawQuery = p.Encode()
@@ -78,9 +98,28 @@ func doRequest(requestData *singleRequest) {
 	client := &http.Client{}
 	resp, err = client.Do(request)
 	if err != nil {
-		*result = internalErr(err)
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func doRequest(requestData *SingleRequest) {
+	defer func() {
+		<-semaphore
+		requestData.Params.Wg.Done()
+	}()
+
+	var apiResponse []byte
+
+	result := requestData.Result
+	resp, err := GetRequest(requestData)
+	if err != nil {
+		result.InternalErr(err)
+		//*result = InternalErr(err)
 		return
 	}
+
 	defer func(b io.ReadCloser) {
 		err = b.Close()
 		if err != nil {
@@ -91,32 +130,51 @@ func doRequest(requestData *singleRequest) {
 
 	apiResponse, err = io.ReadAll(resp.Body)
 	if err != nil {
-		*result = internalErr(err)
+		result.InternalErr(err)
+		//*result = InternalErr(err)
 	}
 
-	base64Data := base64.StdEncoding.EncodeToString(apiResponse)
-	*result = response{
-		Index:      requestData.result.Index,
+	*result = Response{
+		Index:      requestData.Result.Index,
 		Status:     resp.Status,
 		StatusCode: resp.StatusCode,
-		Result:     base64Data,
+		Result:     base64.StdEncoding.EncodeToString(apiResponse),
 	}
 }
 
-func CallAsyncApi(query *input.InpParams) error {
+func SaveResultFile(res any, path string) error {
+	respFile, err := json.Marshal(res)
+	if err != nil {
+		return err
+	}
+	var prettyJSON bytes.Buffer
+	err = json.Indent(&prettyJSON, respFile, "", "\t")
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(path, prettyJSON.Bytes(), os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func CallAsyncApi(query *in.InpParamsStruct) error {
 	var (
 		allFilled bool
 		err       error
 		reqJSON   []byte
 		requests  []any
-		res       []response
-		respFile  []byte
+		res       []Response
 	)
 	errLog, _ := logs.GetErrorLog()
 
 	switch query.Body.(type) {
 	case map[string]any:
 		requests = []any{query.Body}
+	case string:
+		requests = []any{struct{}{}}
 	case []any:
 		requests = query.Body.([]any)
 	default:
@@ -124,32 +182,18 @@ func CallAsyncApi(query *input.InpParams) error {
 	}
 
 	resLen := len(requests)
-	res = make([]response, resLen)
+	res = make([]Response, resLen)
 
 	connPool := 50 //default
 	if query.ConnPool != 0 {
 		connPool = query.ConnPool
 	}
 	semaphore = make(chan struct{}, connPool)
-
-	p := "https://"
-	if !query.Ssl {
-		p = "http://"
-	}
-
-	reqParams := requestParams{
-		wg:      &sync.WaitGroup{},
-		method:  strings.ToUpper(query.Method),
-		url:     p + query.Server + query.EndPoint,
-		headers: query.Headers,
-		params:  query.Params,
-		errList: query.Errlist,
-	}
+	reqParams := GetCommonParams(query)
 
 labelMain:
 	for {
 		allFilled = true
-		//labelSlice:
 		for k, v := range requests {
 			if res[k].StatusCode == 0 {
 				allFilled = false
@@ -157,39 +201,32 @@ labelMain:
 
 				reqJSON, err = json.Marshal(&v)
 				if err != nil {
-					res[k] = internalErr(err)
+					res[k].InternalErr(err)
+					//res[k] = InternalErr(err)
 					continue
 				}
 
-				requestData := singleRequest{
-					params: reqParams,
-					body:   reqJSON,
-					result: &res[k]}
+				requestData := SingleRequest{
+					Params: reqParams,
+					Body:   reqJSON,
+					Result: &res[k]}
 
 				semaphore <- struct{}{}
-				reqParams.wg.Add(1)
+				reqParams.Wg.Add(1)
+				//TODO: goroutine
 				doRequest(&requestData)
 			}
 		}
 
-		reqParams.wg.Wait()
+		reqParams.Wg.Wait()
 		if allFilled {
 			break labelMain
 		}
 	}
 
-	respFile, err = json.Marshal(res)
+	err = SaveResultFile(res, filepath.Join(in.WorkDir, "result.json"))
 	if err != nil {
-		errLog.Fatal(err)
-	}
-	var prettyJSON bytes.Buffer
-	err = json.Indent(&prettyJSON, respFile, "", "\t")
-	if err != nil {
-		errLog.Fatal(err)
-	}
-	err = os.WriteFile(filepath.Join(query.Directory, "result.json"), prettyJSON.Bytes(), os.ModePerm)
-	if err != nil {
-		errLog.Fatal(err)
+		errLog.Fatal(errLog)
 	}
 
 	return nil

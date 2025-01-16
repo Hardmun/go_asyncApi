@@ -19,7 +19,7 @@ var serviceMode bool
 func DirPath(path ...string) (string, error) {
 	pathDir := filepath.Join(path...)
 	if info, errDir := os.Stat(pathDir); errDir != nil || !info.IsDir() {
-		if errDir = os.Mkdir(pathDir, os.ModePerm); errDir != nil {
+		if errDir = os.MkdirAll(pathDir, os.ModePerm); errDir != nil {
 			return "", errDir
 		}
 	}
@@ -84,8 +84,8 @@ func ClearTempFiles(dr string) error {
 	return nil
 }
 
-// - true: file runs under the service
-// - false: file runs under the user
+// - true: exe mode
+// - false: ide mode
 func SetServiceMode(mode bool) {
 	serviceMode = mode
 }

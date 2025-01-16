@@ -2,6 +2,7 @@ package main
 
 import (
 	"asyncApi/internal/api/common"
+	"asyncApi/internal/api/diadoc"
 	"asyncApi/internal/api/ord"
 	"asyncApi/internal/input"
 	"asyncApi/internal/logs"
@@ -11,7 +12,7 @@ import (
 )
 
 func main() {
-	utils.SetServiceMode(false)
+	utils.SetServiceMode(true)
 
 	errLog, err := logs.GetErrorLog()
 	if err != nil {
@@ -27,19 +28,21 @@ func main() {
 		if arg == "-clearLogs" {
 			errLog.ClearLogs()
 		} else if args[1] == "-clear" {
-			_ = utils.ClearTempFiles("")
+			err = utils.ClearTempFiles("")
+			errLog.Write(err)
 		} else {
-			var iParam *input.InpParams
-			iParam, err = input.GetInputParams(arg)
+			var iParam *input.InpParamsStruct
+			iParam, err = input.InitializeInputParams(arg)
+
 			if err != nil {
 				errLog.Fatal(err)
 			}
 
-			switch iParam.Module {
+			switch iParam.Project {
 			case input.Ord:
 				err = ord.CallOrdApi(iParam)
-			case input.Diadoc:
-				err = common.CallAsyncApi(iParam)
+			case input.DiadocUpload:
+				err = diadoc.UploadFiles()
 			default:
 				err = common.CallAsyncApi(iParam)
 			}

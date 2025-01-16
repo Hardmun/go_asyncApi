@@ -9,39 +9,45 @@ import (
 	"path/filepath"
 )
 
-type ModuleType int
-
-const (
-	Ord ModuleType = iota + 1
-	Diadoc
+var (
+	WorkDir   string
+	InpParams *InpParamsStruct
 )
 
-type InpParams struct {
-	Server    string            `json:"server"`
-	EndPoint  string            `json:"endPoint"`
-	Ssl       bool              `json:"ssl"`
-	Module    ModuleType        `json:"module"`
-	OrigResp  bool              `json:"origResp"`
-	Login     string            `json:"login"`
-	Password  string            `json:"password"`
-	Method    string            `json:"method"`
-	ConnPool  int               `json:"connPool"`
-	Errlist   []string          `json:"errlist"`
-	Headers   map[string]string `json:"headers"`
-	Params    map[string]string `json:"params"`
-	Body      any               `json:"body"`
-	Directory string
+type ProjectType int
+
+const (
+	Ord ProjectType = iota + 1
+	OrdOrigResp
+	DiadocUpload
+)
+
+type InpParamsStruct struct {
+	Server      string            `json:"server"`
+	EndPoint    string            `json:"endPoint"`
+	Ssl         bool              `json:"ssl"`
+	Project     ProjectType       `json:"module"`
+	OrigResp    bool              `json:"origResp"`
+	Login       string            `json:"login"`
+	Password    string            `json:"password"`
+	Method      string            `json:"method"`
+	ConnPool    int               `json:"connPool"`
+	Errlist     []string          `json:"errlist"`
+	Headers     map[string]string `json:"headers"`
+	GetParams   map[string]string `json:"params"`
+	DownloadDir string            `json:"downloadDir"`
+	Body        any               `json:"body"`
 }
 
-func GetInputParams(uuidDir string) (*InpParams, error) {
+func getInputParams(uuidDir string) (*InpParamsStruct, error) {
 	var (
 		jsonFile *os.File
 		err      error
 		byteJSON []byte
 	)
-	workDir := filepath.Join(utils.GetDataPath(), uuidDir)
+	WorkDir = filepath.Join(utils.GetDataPath(), uuidDir)
 
-	jsonFile, err = os.Open(filepath.Join(workDir, "data.json"))
+	jsonFile, err = os.Open(filepath.Join(WorkDir, "data.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -60,13 +66,21 @@ func GetInputParams(uuidDir string) (*InpParams, error) {
 		return nil, fmt.Errorf("invalid JSON string: %v", string(byteJSON))
 	}
 
-	var data InpParams
+	var data InpParamsStruct
 	err = json.Unmarshal(byteJSON, &data)
 	if err != nil {
 		return nil, err
 	}
 
-	data.Directory = workDir
-
 	return &data, nil
+}
+
+func InitializeInputParams(uuidDir string) (*InpParamsStruct, error) {
+	var err error
+
+	InpParams, err = getInputParams(uuidDir)
+	if err != nil {
+		return nil, err
+	}
+	return InpParams, nil
 }

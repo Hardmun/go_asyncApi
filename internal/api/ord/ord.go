@@ -260,7 +260,7 @@ func httpRequest() {
 	}
 }
 
-func CallOrdApi(data *input.InpParams) error {
+func CallOrdApi(data *input.InpParamsStruct) error {
 	var (
 		errlist      []string
 		err          error
@@ -431,7 +431,7 @@ labelMain:
 	var prettyJSON bytes.Buffer
 	err = json.Indent(&prettyJSON, responseJSON, "", "\t")
 
-	err = os.WriteFile(filepath.Join(data.Directory, "result.json"), prettyJSON.Bytes(), os.ModePerm)
+	err = os.WriteFile(filepath.Join(input.WorkDir, "result.json"), prettyJSON.Bytes(), os.ModePerm)
 	if err != nil {
 		loggErrorMessage(err)
 	}
