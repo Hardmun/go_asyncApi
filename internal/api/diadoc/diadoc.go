@@ -2,9 +2,11 @@ package diadoc
 
 import (
 	cm "asyncApi/internal/api/common"
+	"asyncApi/internal/crypt"
 	in "asyncApi/internal/input"
 	"asyncApi/utils"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,15 +80,38 @@ func (t *tMap) load(p map[string]interface{}) error {
 	return nil
 }
 
+type glbError struct {
+	err any
+	mu  sync.RWMutex
+}
+
+func (g *glbError) set(a any) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.err = a
+}
+
+func (g *glbError) get() any {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.err
+}
+
+func newGlobalError() *glbError {
+	return &glbError{}
+}
+
 type tokenManager struct {
-	token     *tMap
+	tokens    *tMap
 	urlParams *tokenParamsStruct
 	mu        sync.RWMutex
 	refreshCh chan struct{}
 }
 
-func (tm *tokenManager) initialize() error {
-	rf, err := os.ReadFile(filepath.Join(utils.GetDataPath(), "token", "tokenParams.json"))
+func (tm *tokenManager) initialize(tokenInfo string) error {
+	rf, err := base64.StdEncoding.DecodeString(tokenInfo)
 	if err != nil {
 		return err
 	}
@@ -105,12 +130,24 @@ func (tm *tokenManager) initialize() error {
 	}
 
 	if json.Valid(rf) {
-		var tks tMap
+		var (
+			enc string
+			tks tMap
+		)
 		err = json.Unmarshal(rf, &tks)
 		if err != nil {
 			return err
 		}
-		tm.token = &tks
+		secret := tm.urlParams.Secret
+		for k, v := range tks {
+			enc, err = crypt.DecryptToken(v, secret)
+			if err != nil {
+				continue
+			}
+			tks[k] = enc
+		}
+
+		tm.tokens = &tks
 	}
 
 	if tm.get() == "" {
@@ -126,21 +163,40 @@ func (tm *tokenManager) set(token string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	(*tm.token)[tm.urlParams.Client] = fmt.Sprintf("DiadocAuth ddauth_api_client_id=%s, ddauth_token=%s",
-		tm.urlParams.Client, token)
+	(*tm.tokens)[tm.urlParams.Client] = token
 }
 
 func (tm *tokenManager) save() {
 	tm.mu.RLock()
-	t := *tm.token
+	t := make(tMap)
+	secret := (*tm).urlParams.Secret
+	var (
+		b   []byte
+		enc string
+		err error
+	)
+	for k, v := range *tm.tokens {
+		enc, err = crypt.EncryptToken(v, secret)
+		if err != nil {
+			t[k] = err.Error()
+			continue
+		}
+		t[k] = enc
+	}
 	tm.mu.RUnlock()
 
-	b, err := json.Marshal(t)
+	b, err = json.Marshal(t)
 	if err != nil {
 		return
 	}
 
-	err = os.WriteFile(filepath.Join(utils.GetDataPath(), "token", "auth.json"), b, os.ModePerm)
+	var dirPath string
+	dirPath, err = utils.DirPath(utils.GetDataPath(), "token")
+	if err != nil {
+		return
+	}
+
+	err = os.WriteFile(filepath.Join(dirPath, "auth.json"), b, os.ModePerm)
 	if err != nil {
 		return
 	}
@@ -206,8 +262,19 @@ func (tm *tokenManager) get() string {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
-	if v, ok := (*tm.token)[tm.urlParams.Client]; ok {
+	if v, ok := (*tm.tokens)[tm.urlParams.Client]; ok {
 		return v
+	}
+
+	return ""
+}
+
+func (tm *tokenManager) auth() string {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	if v, ok := (*tm.tokens)[tm.urlParams.Client]; ok {
+		return fmt.Sprintf("DiadocAuth ddauth_api_client_id=%s, ddauth_token=%s", tm.urlParams.Client, v)
 	}
 
 	return ""
@@ -223,7 +290,7 @@ func (tm *tokenManager) close() {
 
 func newTokenManager() *tokenManager {
 	return &tokenManager{
-		token:     &tMap{},
+		tokens:    &tMap{},
 		refreshCh: make(chan struct{}),
 	}
 }
@@ -241,7 +308,7 @@ func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
 	for k, v := range req.headers {
 		request.Header.Set(k, v)
 	}
-	request.Header.Set("Authorization", req.tm.get())
+	request.Header.Set("Authorization", req.tm.auth())
 
 	p := request.URL.Query()
 	for k, v := range req.params {
@@ -332,16 +399,16 @@ func do(req reqStruct, glbErrChan chan any) {
 	}
 }
 
-func ufJson() any {
+func ufJson(tokenInfo string) any {
 	var (
 		isGlbErr int32
-		glbError any
 		requests []any
 		res      []cm.Response
 	)
 
+	gError := newGlobalError()
 	tm := newTokenManager()
-	err := tm.initialize()
+	err := tm.initialize(tokenInfo)
 	if err != nil {
 		return err
 	}
@@ -370,14 +437,12 @@ func ufJson() any {
 		return fmt.Errorf("%s", "Cannot read the request from JSON")
 	}
 
-	//semaphore = make(chan struct{}, 1)
-	//TODO: make 50
 	semaphore = make(chan struct{}, in.InpParams.ConnPool)
 	glbErrChan := make(chan any)
 	go func() {
 		for ge := range glbErrChan {
 			if ge != nil {
-				glbError = ge
+				gError.set(ge)
 				atomic.StoreInt32(&isGlbErr, 1)
 			}
 		}
@@ -423,15 +488,15 @@ func ufJson() any {
 	close(glbErrChan)
 	close(semaphore)
 
-	if glbError != nil {
-		return glbError
+	if gErr := gError.get(); gErr != nil {
+		return gErr
 	}
 
 	return res
 }
 
-func UploadFiles() error {
-	res := ufJson()
+func UploadFiles(tokenInfo string) error {
+	res := ufJson(tokenInfo)
 
 	switch r := res.(type) {
 	case error:

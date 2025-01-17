@@ -84,8 +84,10 @@ func ClearTempFiles(dr string) error {
 	return nil
 }
 
-// - true: exe mode
-// - false: ide mode
+// SetServiceMode
+//
+// true - exe mode
+// false - ide mode
 func SetServiceMode(mode bool) {
 	serviceMode = mode
 }

@@ -14,19 +14,18 @@ var (
 	InpParams *InpParamsStruct
 )
 
-type ProjectType int
+type ModeType int
 
 const (
-	Ord ProjectType = iota + 1
-	OrdOrigResp
-	DiadocUpload
+	Ord          ModeType = 1
+	DiadocUpload          = 3
 )
 
 type InpParamsStruct struct {
 	Server      string            `json:"server"`
 	EndPoint    string            `json:"endPoint"`
 	Ssl         bool              `json:"ssl"`
-	Project     ProjectType       `json:"module"`
+	Mode        ModeType          `json:"mode"`
 	OrigResp    bool              `json:"origResp"`
 	Login       string            `json:"login"`
 	Password    string            `json:"password"`

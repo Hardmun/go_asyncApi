@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	utils.SetServiceMode(true)
+	utils.SetServiceMode(false)
 
 	errLog, err := logs.GetErrorLog()
 	if err != nil {
@@ -38,11 +38,9 @@ func main() {
 				errLog.Fatal(err)
 			}
 
-			switch iParam.Project {
+			switch iParam.Mode {
 			case input.Ord:
 				err = ord.CallOrdApi(iParam)
-			case input.DiadocUpload:
-				err = diadoc.UploadFiles()
 			default:
 				err = common.CallAsyncApi(iParam)
 			}
@@ -53,6 +51,20 @@ func main() {
 	case 3:
 		if args[1] == "-clear" {
 			_ = utils.ClearTempFiles(args[2])
+			return
+		}
+
+		var iParam *input.InpParamsStruct
+		iParam, err = input.InitializeInputParams(args[1])
+		if err != nil {
+			errLog.Fatal(err)
+		}
+
+		if iParam.Mode == input.DiadocUpload {
+			err = diadoc.UploadFiles(args[2])
+			if err != nil {
+				errLog.Fatal(err)
+			}
 		}
 	default:
 	}

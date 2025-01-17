@@ -116,7 +116,6 @@ func doRequest(requestData *SingleRequest) {
 	resp, err := GetRequest(requestData)
 	if err != nil {
 		result.InternalErr(err)
-		//*result = InternalErr(err)
 		return
 	}
 
@@ -131,7 +130,6 @@ func doRequest(requestData *SingleRequest) {
 	apiResponse, err = io.ReadAll(resp.Body)
 	if err != nil {
 		result.InternalErr(err)
-		//*result = InternalErr(err)
 	}
 
 	*result = Response{
@@ -213,8 +211,7 @@ labelMain:
 
 				semaphore <- struct{}{}
 				reqParams.Wg.Add(1)
-				//TODO: goroutine
-				doRequest(&requestData)
+				go doRequest(&requestData)
 			}
 		}
 
