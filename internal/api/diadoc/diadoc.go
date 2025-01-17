@@ -6,7 +6,6 @@ import (
 	in "asyncApi/internal/input"
 	"asyncApi/utils"
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,10 +110,13 @@ type tokenManager struct {
 }
 
 func (tm *tokenManager) initialize(tokenInfo string) error {
-	rf, err := base64.StdEncoding.DecodeString(tokenInfo)
-	if err != nil {
-		return err
-	}
+	//rf, err := base64.StdEncoding.DecodeString(tokenInfo)
+	//if err != nil {
+	//	return err
+	//}
+
+	var err error
+	rf := []byte(tokenInfo)
 
 	var tp tokenParamsStruct
 	err = json.Unmarshal(rf, &tp)
