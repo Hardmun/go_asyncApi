@@ -461,7 +461,8 @@ func ufJson(tokenInfo string) any {
 
 		mp, ok := v.(map[string]interface{})
 		if !ok {
-			return fmt.Errorf("%s", "Wrong json structure. Must be the json {'key': 'value'}")
+			return fmt.Errorf("%s", "Wrong json structure. Must be the json {'key': 'value'}\n"+
+				"key - boxId, messageId and documentId")
 		}
 
 		res[k].Index = k
