@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -101,6 +102,81 @@ func (g *glbError) get() any {
 
 func newGlobalError() *glbError {
 	return &glbError{}
+}
+
+var errList errListArray
+
+type errListArray struct {
+	mu      sync.RWMutex
+	errList []string
+}
+
+func (e *errListArray) containsError(err string) bool {
+	if err == "" {
+		return false
+	}
+
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	for _, i := range e.errList {
+		if strings.Contains(err, i) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func newErrList(lst []string) *errListArray {
+	errLst := make([]string, len(lst))
+	copy(errLst, lst)
+
+	return &errListArray{
+		errList: errLst,
+	}
+}
+
+type repeatOnError struct {
+	isRetryAuth  bool
+	isRetryAfter bool
+	retryAtError int
+}
+
+func (r *repeatOnError) isErrorList(lst ...string) bool {
+	defer func() {
+		r.retryAtError++
+	}()
+
+	if r.retryAtError > 1 {
+		return false
+	}
+
+	for _, l := range lst {
+		if errList.containsError(l) {
+			time.Sleep(5 * time.Second)
+			return true
+		}
+	}
+
+	return false
+}
+
+func (r *repeatOnError) getRetries() string {
+	rString := ""
+	if r.retryAtError-1 > 0 {
+		rString = fmt.Sprintf("(retries number: %v)", r.retryAtError-1)
+	}
+
+	return rString
+}
+
+func newRepeatOnError() *repeatOnError {
+	return &repeatOnError{
+		isRetryAuth:  false,
+		isRetryAfter: false,
+		retryAtError: 0,
+	}
 }
 
 type tokenManager struct {
@@ -295,7 +371,7 @@ func newTokenManager() *tokenManager {
 	}
 }
 
-func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
+func doRequest(req reqStruct, errRepeat *repeatOnError) any {
 	var (
 		resp       *http.Response
 		respReader []byte
@@ -319,10 +395,16 @@ func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
 	client := &http.Client{}
 	resp, err = client.Do(request)
 	if err != nil {
+		errString := err.Error()
 		if resp != nil {
-			return fmt.Errorf("%s, %s", resp.Status, err.Error())
+			errString = fmt.Sprintf("%s, %s", resp.Status, errString)
 		}
-		return err
+
+		if errRepeat.isErrorList(errString) {
+			return doRequest(req, errRepeat)
+		}
+
+		return fmt.Errorf("%s", errString+errRepeat.getRetries())
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -335,7 +417,7 @@ func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
 
 	//refresh token on fail
 	if resp.StatusCode == 401 {
-		if isRetryAuth {
+		if errRepeat.isRetryAuth {
 			req.result.Set(resp.Status, resp.StatusCode, string(respReader))
 			return req.result
 		} else {
@@ -350,14 +432,19 @@ func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
 			}
 
 			req.tm.handle()
-			return doRequest(req, true, false)
+			errRepeat.isRetryAuth = true
+			return doRequest(req, errRepeat)
 		}
 	}
 
 	if resp.StatusCode != 200 {
-		req.result.Set(resp.Status, resp.StatusCode, string(respReader))
+		if errRepeat.isErrorList(resp.Status, string(respReader)) {
+			return doRequest(req, errRepeat)
+		}
+
+		req.result.Set(resp.Status, resp.StatusCode, string(respReader)+errRepeat.getRetries())
 	} else if rt := resp.Header.Get("Retry-After"); rt != "" && len(respReader) == 0 {
-		if isRetry {
+		if errRepeat.isRetryAfter {
 			req.result.Set(resp.Status, resp.StatusCode, string(respReader))
 		} else {
 			var rtn int
@@ -366,8 +453,9 @@ func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
 				req.result.Set(resp.Status, resp.StatusCode, fmt.Sprintf("Retry-After: %s", err.Error()))
 			}
 			time.Sleep(time.Duration(rtn+2) * time.Second)
+			errRepeat.isRetryAfter = true
 
-			return doRequest(req, false, true)
+			return doRequest(req, errRepeat)
 		}
 	} else {
 		var path string
@@ -396,7 +484,9 @@ func do(req reqStruct, glbErrChan chan any) {
 		wg.Done()
 	}()
 
-	err := doRequest(req, false, false)
+	errRepeat := newRepeatOnError()
+
+	err := doRequest(req, errRepeat)
 	if err != nil {
 		glbErrChan <- err
 	}
@@ -418,6 +508,7 @@ func ufJson(tokenInfo string) any {
 
 	params := in.InpParams
 	commonParams := cm.GetCommonParams(params)
+	errList = *newErrList(commonParams.ErrList)
 
 	if commonParams.Method != http.MethodGet {
 		return fmt.Errorf("%s", "Only GET method is allowed")
