@@ -319,6 +319,9 @@ func doRequest(req reqStruct, isRetryAuth bool, isRetry bool) any {
 	client := &http.Client{}
 	resp, err = client.Do(request)
 	if err != nil {
+		if resp != nil {
+			return fmt.Errorf("%s, %s", resp.Status, err.Error())
+		}
 		return err
 	}
 	defer func() {
