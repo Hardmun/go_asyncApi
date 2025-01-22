@@ -6,3 +6,6 @@
 !/external/1c/1Cv8.1CD
 /temp
 /data
+/cmd/app/data
+/.vscode
+/.vscode/launch.json
