@@ -9,4 +9,3 @@
 !/data/adb808b6-1005-416e-a627-5bffebf074bc/data.json
 /cmd/app/data
 /.vscode
-!/.vscode/launch.json
