@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	utils.SetServiceMode(true)
+	utils.SetServiceMode(false)
 
 	errLog, err := logs.GetErrorLog()
 	if err != nil {
