@@ -8,4 +8,4 @@
 /data
 /cmd/app/data
 /.vscode
-/.vscode/launch.json
+!/.vscode/launch.json
