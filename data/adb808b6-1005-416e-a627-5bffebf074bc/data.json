@@ -1,0 +1,43 @@
+{
+  "server": "diadoc-api.kontur.ru",
+  "endPoint": "/GeneratePrintForm",
+  "ssl": true,
+  "connPool": 100,
+  "origResp": false,
+  "errlist": [
+    "period of time"
+  ],
+  "mode": 3,
+  "headers": {
+    "Content-type": "application/json"
+  },
+  "method": "GET",
+  "body": [
+    {
+      "boxId": "e08f1b9f-0ba3-4c51-b6fc-e11129ec57e6",
+      "messageId": "ed45375e-8de2-4d54-a220-e4a9a951fe05",
+      "documentId": "8408a7c9-52ca-4a76-a6e6-554bdf90730b"
+    },
+    {
+      "boxId": "e08f1b9f-0ba3-4c51-b6fc-e11129ec57e6",
+      "messageId": "e78fdd32-4399-4471-89e3-909ff8eb8e1c",
+      "documentId": "a75dd50b-336c-4bf0-aa51-637f5875201b"
+    },
+    {
+      "boxId": "e08f1b9f-0ba3-4c51-b6fc-e11129ec57e6",
+      "messageId": "e78fdd32-4399-4471-89e3-909ff8eb8e1c",
+      "documentId": "b85540c3-5ff6-404c-9657-75f6290dbc6a"
+    },
+    {
+      "boxId": "e08f1b9f-0ba3-4c51-b6fc-e11129ec57e6",
+      "messageId": "071f97c1-dcbf-44cd-884e-3afca363198e",
+      "documentId": "350da002-7d1e-448e-9887-37c191ea54bc"
+    },
+    {
+      "boxId": "e08f1b9f-0ba3-4c51-b6fc-e11129ec57e6",
+      "messageId": "071f97c1-dcbf-44cd-884e-3afca363198e",
+      "documentId": "07f00988-4741-4371-93a1-421d4afbc73a"
+    }
+  ],
+  "DownloadDir": "D:\\My Documents\\golang\\asyncApi\\data\\files"
+}
